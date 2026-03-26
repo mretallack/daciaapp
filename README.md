@@ -130,4 +130,11 @@ Probe complete
 
 ## Protocol Details
 
-See [nftp.md](../nftp.md) for the full NFTP protocol documentation.
+See [nftp.md](nftp.md) for the full NFTP protocol documentation.
+
+## Acknowledgements
+
+This project builds on the reverse-engineering work by goncalomb:
+
+- [How I Also Hacked My Car](https://goncalomb.com/blog/2024/01/30/f57cf19b-how-i-also-hacked-my-car) — blog post documenting the NFTP protocol and MediaNav 4 internals
+- [mn4-tools](https://github.com/goncalomb/mn4-tools) — tools for interacting with MediaNav 4 head units
