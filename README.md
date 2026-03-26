@@ -1,5 +1,9 @@
 # NFTP Probe
 
+> **License**: MIT — see [LICENSE](LICENSE)
+
+> **⚠️ DISCLAIMER**: Use this software entirely at your own risk. Connecting to your head unit with unofficial tools could potentially brick, corrupt, or void the warranty of your media unit. The authors accept no responsibility for any damage to your vehicle, head unit, phone, or any other equipment. This is an experimental tool — if you are not comfortable with the risks, do not use it.
+
 Minimal Android app that connects to a MediaNav 4 head unit over USB AOA, performs an NFTP Init handshake, and reads `device.nng` to confirm the protocol works. No files are written, deleted, or modified on the head unit — this is purely read-only.
 
 ## How It Works
