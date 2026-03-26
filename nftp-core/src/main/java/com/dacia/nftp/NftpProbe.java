@@ -72,6 +72,7 @@ public class NftpProbe {
             byte[] fileData = new byte[getResp.length - 1];
             System.arraycopy(getResp, 1, fileData, 0, fileData.length);
             log.log("Got device.nng: " + fileData.length + " bytes");
+            log.log(new String(fileData, "UTF-8").trim());
             log.log("Probe complete");
 
             return Result.success(serverName, serverVersion, fileData);
