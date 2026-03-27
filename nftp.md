@@ -229,19 +229,48 @@ VLU = variable-length unsigned int (7 bits per byte, MSB = continuation)
 
 The official app's `.xs` scripts send QueryInfo keys as NNG symbols (e.g. `@device`, `@brand`, `@fileMapping`). These are serialised as `IdSymbolVLI` (tag 29) with an integer symbol ID.
 
+**Why IdentifierString (tag 13) doesn't work — confirmed via decompiled Java SDK:**
+
+The `Deserializer.java` handles each tag type differently:
+- `IdentifierString` (tag 13) → creates `NNGIdentifier(id=String("device"))`
+- `IdSymbolVLI` (tag 29) → creates `NNGIdentifier(id=NngSymbol(742))` (or whatever the integer ID is)
+
+The `NNGIdentifier.equals()` method compares using `Intrinsics.areEqual(this.id, other.id)`. Since `String("device") != NngSymbol(742)` (different Java types), they **never match**. The server deserialises our string identifier correctly, but when its QueryInfo handler compares the received key against its symbol-based keys, the comparison fails due to type mismatch.
+
+**There is no string-based fallback.** The only way to make QueryInfo work is to send the correct integer symbol IDs via `IdSymbolVLI` (tag 29).
+
+**How the official app serialises symbols — confirmed via decompiled Java SDK:**
+
+In `Serializer.writeValue()`, when the value is an `NngSymbol`:
+```java
+writeTaggedInt(symbol.getId(), TypeTag.IdentifierSymbol, TypeTag.IdSymbolVLI, false);
+```
+In compact mode (`@compact`), this writes `IdSymbolVLI` (tag 29) + VLI-encoded integer ID. The symbol name is **never** included in the wire format.
+
+**How `writeValue` works in nftp.xs:**
+```javascript
+export writeValue(writer, val) {
+    const stream = Stream(@compact);  // creates Serializer with compactInts=true
+    stream.add(val);                  // serialises val using compact encoding
+    writer.writeBytes(stream.transfer());
+}
+```
+When `queryInfo(messenger, @device, @brand)` is called, the `keys` tuple `(@device, @brand)` is serialised. Each `@device` and `@brand` is an `NngSymbol` in the `.xs` runtime, so they're written as `IdSymbolVLI(id)`.
+
 **Attempts to send QueryInfo from our app (all failed to return data):**
 
 1. **IdentifierString (tag 13)** — sent keys as strings like `"device"`, `"brand"`, `"fileMapping"`:
    - Server accepts the request (status=0) but returns empty tuple `[1f 00]`
-   - The server doesn't match string identifiers against its symbol-based keys
+   - Root cause: type mismatch in `NNGIdentifier.equals()` — `String != NngSymbol`
 
 2. **Plain String (tag 3)** — sent `"@device"` as a regular string:
    - Same result: status=0, empty tuple
+   - A plain string is not an identifier at all — completely wrong type
 
 3. **IdSymbolVLI (tag 29) with sequential IDs 0–500** — brute-force scan:
    - Every ID returned 12 bytes: `00 1f 01 8d 75 6e 6b 6e 6f 77 6e 00`
    - Decoded: success + array of 1 item + IdentifierString `"unknown"`
-   - The server recognises the symbol ID format but doesn't know these IDs
+   - The server recognises the symbol ID format but these IDs don't map to any known symbols in the head unit's runtime
 
 4. **IdSymbolVLI with IDs 700–1500** — wider scan (pending results):
    - Based on Ghidra analysis showing 736 SDK-level symbols registered before app symbols
@@ -288,9 +317,44 @@ The NNG SDK uses a symbol interning system. Key findings from decompiling the 31
 - Both the phone app and head unit must assign the same IDs because they load the same NNG SDK + same `.xs` scripts
 
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
-1. Discover the IDs by brute-force scanning (in progress)
+1. Discover the IDs by brute-force scanning (in progress, range 700–1500)
 2. Intercept the official app's wire traffic to capture the actual IDs
-3. Replicate the NNG runtime's symbol assignment order
+3. Replicate the NNG runtime's symbol assignment order by tracing the `.xs` module load chain
+
+#### Architecture: Native vs Script Layers (from Ghidra decompilation)
+
+The NFTP implementation is split across two layers:
+
+**Native layer** (`system://yellow.nftp` module, in `liblib_nng_sdk.so`):
+- Source: `engine/mod_scripting/src/system/nftp/nftp_fd.cpp`
+- Provides: socket/fd transport, connection lifecycle, authentication
+- Exposes to `.xs` scripts: `sendRaw`, `sendMessage`, `setHandler`, `sendMethodCall`
+- Also registers symbols: `tryAnonymous`, `identity`, `cookieSha1`
+- Does NOT implement the NFTP protocol commands (Init, GetFile, QueryInfo, etc.)
+- Session vtable at `0x01d79238`, post-auth vtable at `0x01d793b8`
+
+**Script layer** (`core/nftp.xs`, shared between phone and head unit):
+- Implements the actual NFTP protocol: message framing, command types, serialisation
+- Both the phone app and head unit import from `core/nftp.xs`:
+  ```javascript
+  // Phone app (connections.xs):
+  import * as nftp from "system://yellow.nftp"           // native transport
+  import { queryInfo, queryFiles, ... } from "core/nftp.xs"  // protocol logic
+  ```
+- The `writeValue`/`readValue` functions use `Stream(@compact)` / `Reader` for serialisation
+- QueryInfo keys (`@device`, `@brand`, `@fileMapping`) are `.xs` symbols, NOT native symbols
+
+**Why symbol IDs match between phone and head unit:**
+1. Both run the same `liblib_nng_sdk.so` → same 736 SDK symbols with same IDs
+2. Both load `core/nftp.xs` → same 18 protocol symbols (`@md5`, `@sha1`, `@compact`, `@name`, `@size`, `@ls`, etc.)
+3. Both load shared modules in the same order → app-level symbols get the same IDs
+4. The official app works, confirming IDs are deterministic and shared
+
+**Symbols in `core/nftp.xs`** (18 unique, in order of first appearance):
+`@md5`, `@sha1`, `@stopStream`, `@pauseStream`, `@resumeStream`, `@control`, `@response`, `@request`, `@returns`, `@getAndRemove`, `@get`, `@compact`, `@error`, `@children`, `@name`, `@size`, `@ls`, `@path`
+
+**Symbols NOT in `core/nftp.xs`** (defined in app-level scripts):
+`@device`, `@brand`, `@fileMapping`, `@freeSpace`, `@diskInfo` — these are used in `connections.xs`, `contentManagament.xs`, and the head unit's handler scripts. Their IDs depend on the full module load order.
 
 ### USB AOA Read Behaviour
 
