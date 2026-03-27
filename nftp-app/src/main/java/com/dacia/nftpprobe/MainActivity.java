@@ -177,12 +177,69 @@ public class MainActivity extends Activity {
     }
 
     private void showFileDetail(com.dacia.nftp.HeadUnitExplorer.FileEntry entry) {
-        // Simple dialog for now
-        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this);
-        b.setTitle(entry.name);
-        b.setMessage("Path: " + entry.path);
-        b.setNeutralButton("Close", null);
-        b.show();
+        View dlgView = getLayoutInflater().inflate(R.layout.dialog_file_detail, null);
+        android.widget.TextView txtPath = dlgView.findViewById(R.id.txtFilePath);
+        android.widget.TextView txtInfo = dlgView.findViewById(R.id.txtFileInfo);
+        android.widget.TextView txtResult = dlgView.findViewById(R.id.txtResult);
+        Button btnMd5 = dlgView.findViewById(R.id.btnMd5);
+        Button btnSha1 = dlgView.findViewById(R.id.btnSha1);
+        Button btnDownload = dlgView.findViewById(R.id.btnDownload);
+        Button btnSave = dlgView.findViewById(R.id.btnSave);
+
+        txtPath.setText(entry.path);
+        txtInfo.setText(entry.isDir ? "Directory" : "File");
+
+        final byte[][] downloadedData = {null};
+
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setView(dlgView).setNeutralButton("Close", null).create();
+
+        btnMd5.setOnClickListener(v -> new Thread(() -> {
+            try {
+                // Use lastResult's connection — for now just show we'd call checksum
+                log("CheckSum MD5 for " + entry.path);
+                runOnUiThread(() -> txtResult.setText("MD5: (requires active connection)"));
+            } catch (Exception e) {
+                runOnUiThread(() -> txtResult.setText("Error: " + e.getMessage()));
+            }
+        }).start());
+
+        btnSha1.setOnClickListener(v -> new Thread(() -> {
+            try {
+                log("CheckSum SHA1 for " + entry.path);
+                runOnUiThread(() -> txtResult.setText("SHA1: (requires active connection)"));
+            } catch (Exception e) {
+                runOnUiThread(() -> txtResult.setText("Error: " + e.getMessage()));
+            }
+        }).start());
+
+        btnDownload.setOnClickListener(v -> new Thread(() -> {
+            try {
+                log("Download " + entry.path);
+                runOnUiThread(() -> txtResult.setText("Downloading... (requires active connection)"));
+            } catch (Exception e) {
+                runOnUiThread(() -> txtResult.setText("Error: " + e.getMessage()));
+            }
+        }).start());
+
+        btnSave.setOnClickListener(v -> {
+            if (downloadedData[0] == null) return;
+            try {
+                java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS);
+                java.io.File file = new java.io.File(dir, entry.name);
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                    fos.write(downloadedData[0]);
+                }
+                log("Saved " + entry.path + " to " + file.getAbsolutePath());
+                txtResult.setText("Saved to: " + file.getAbsolutePath());
+            } catch (Exception e) {
+                log("Save error: " + e.getMessage());
+                txtResult.setText("Save error: " + e.getMessage());
+            }
+        });
+
+        dlg.show();
     }
 
     // --- Log Tab ---

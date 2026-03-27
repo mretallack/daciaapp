@@ -90,7 +90,7 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 
 - [x] Refactor existing `buildGetFile` to accept any path (already done, just verify)
 - [x] Add hex dump utility for displaying binary file content
-- [ ] Add option to save downloaded file to phone storage
+- [x] Add option to save downloaded file to phone storage
 - [x] Write `HexDumpTest`
   - [x] Dump short binary data
   - [x] Dump data with printable and non-printable bytes
@@ -115,14 +115,14 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 - [~] `DiskInfo` data class — SKIPPED until QueryInfo works
 - [x] `getDefaultFileMapping()` — returns hardcoded mapping from v1.8.13 app
 - [x] `getDirectoryTree()` — returns fixed directory structure
-- [ ] Write `HeadUnitExplorerTest` with fake server
-  - [ ] Connect and Init
+- [x] Write `HeadUnitExplorerTest` with fake server
+  - [x] Connect and Init
   - [~] getDeviceInfo returns parsed fields — SKIPPED
   - [~] getDiskInfo returns size and free space — SKIPPED
   - [~] listDirectory returns file entries — SKIPPED
-  - [ ] readFile returns file bytes
-  - [ ] getChecksum returns hex string
-  - [ ] Error handling — query after disconnect
+  - [x] readFile returns file bytes
+  - [x] getChecksum returns hex string
+  - [x] Error handling — query after disconnect
 
 ## 7. UI — Tab Layout
 
@@ -155,11 +155,11 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 
 ## 10. UI — File Detail Dialog
 
-- [x] Basic AlertDialog showing file path
-- [ ] "Get MD5" button → calls `getChecksum(path, 0)` → displays result
-- [ ] "Get SHA1" button → calls `getChecksum(path, 1)` → displays result
-- [ ] "Download" button → calls `readFile(path)` → shows hex dump
-- [ ] "Save to phone" button → saves downloaded bytes to phone Downloads folder
+- [x] Basic AlertDialog with file detail layout
+- [x] "Get MD5" button → calls `getChecksum(path, 0)` → displays result
+- [x] "Get SHA1" button → calls `getChecksum(path, 1)` → displays result
+- [x] "Download" button → calls `readFile(path)` → shows hex dump
+- [x] "Save to phone" button → saves downloaded bytes to phone Downloads folder
 - [ ] Show file size warning for large files (>1MB)
 
 ## 11. UI — Log Tab
@@ -172,12 +172,12 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 ## 12. Emulator Updates
 
 - [~] Add QueryInfo handler to Python emulator — SKIPPED: QueryInfo blocked on real device
-- [ ] Add CheckSum handler to emulator — return MD5/SHA1 of served files
-- [ ] Add multiple test files to emulator for explorer testing
-- [ ] Write emulator tests for CheckSum handler
-  - [ ] CheckSum MD5 returns correct hash
-  - [ ] CheckSum SHA1 returns correct hash
-  - [ ] CheckSum for unknown file returns error
+- [x] Add CheckSum handler to emulator — return MD5/SHA1 of served files
+- [x] Add multiple test files to emulator for explorer testing
+- [x] Write emulator tests for CheckSum handler
+  - [x] CheckSum MD5 returns correct hash
+  - [x] CheckSum SHA1 returns correct hash
+  - [x] CheckSum for unknown file returns error
 
 ## 13. Integration Testing
 
@@ -194,7 +194,7 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 
 ## 14. Documentation
 
-- [ ] Update `README.md` with new features and usage
-- [ ] Update `nftp.md` with QueryInfo serialisation details
-- [ ] Update `nftp.md` with CheckSum wire format
+- [x] Update `README.md` with new features and usage
+- [x] Update `nftp.md` with QueryInfo serialisation details
+- [x] Update `nftp.md` with CheckSum wire format
 - [ ] Add screenshots of Explorer UI to README

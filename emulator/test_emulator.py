@@ -10,7 +10,7 @@ import pytest
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from emulator import (
-    HEADER_SIZE, MAX_PAYLOAD, CONTROL_ID, FAKE_DEVICE_NNG,
+    HEADER_SIZE, MAX_PAYLOAD, CONTROL_ID, FAKE_DEVICE_NNG, FAKE_FILES,
     encode_vlu, read_message, send_response, read_packet,
     write_packet, handle_connection,
 )
@@ -74,7 +74,7 @@ def test_getfile_device_nng(server):
     sock = connect(server)
     send_request(sock, 1, build_init())
     recv_response(sock)
-    send_request(sock, 2, build_getfile("device.nng"))
+    send_request(sock, 2, build_getfile("license/device.nng"))
     _, resp = recv_response(sock)
     assert resp[0] == 0
     assert b"SWID=CK-TEST-FAKE-0000" in resp
@@ -88,6 +88,7 @@ def test_getfile_unknown(server):
     send_request(sock, 2, build_getfile("nonexistent.txt"))
     _, resp = recv_response(sock)
     assert resp[0] == 1  # failed
+    assert b"EACCESS" in resp
     sock.close()
 
 
@@ -105,11 +106,11 @@ def test_multiple_requests(server):
     _, r1 = recv_response(sock)
     assert r1[0] == 0
 
-    send_request(sock, 2, build_getfile("device.nng"))
+    send_request(sock, 2, build_getfile("license/device.nng"))
     _, r2 = recv_response(sock)
     assert r2[0] == 0
 
-    send_request(sock, 3, build_getfile("device.nng"))
+    send_request(sock, 3, build_getfile("license/device.nng"))
     _, r3 = recv_response(sock)
     assert r3[0] == 0
     sock.close()
@@ -120,9 +121,64 @@ def test_large_response(server):
     sock = connect(server)
     send_request(sock, 1, build_init())
     recv_response(sock)
-    send_request(sock, 2, build_getfile("device.nng"))
+    send_request(sock, 2, build_getfile("license/device.nng"))
     _, resp = recv_response(sock)
     assert resp[0] == 0
     payload = resp[1:]
     assert payload == FAKE_DEVICE_NNG
+    sock.close()
+
+
+def build_checksum(path, method=0):
+    return b"\x05" + bytes([method]) + path.encode() + b"\x00" + encode_vlu(0)
+
+
+def test_checksum_md5(server):
+    import hashlib
+    sock = connect(server)
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    send_request(sock, 2, build_checksum("license/device.nng", 0))
+    _, resp = recv_response(sock)
+    assert resp[0] == 0
+    got_hash = resp[1:]
+    assert len(got_hash) == 16
+    expected = hashlib.md5(FAKE_DEVICE_NNG).digest()
+    assert got_hash == expected
+    sock.close()
+
+
+def test_checksum_sha1(server):
+    import hashlib
+    sock = connect(server)
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    send_request(sock, 2, build_checksum("license/device.nng", 1))
+    _, resp = recv_response(sock)
+    assert resp[0] == 0
+    got_hash = resp[1:]
+    assert len(got_hash) == 20
+    expected = hashlib.sha1(FAKE_DEVICE_NNG).digest()
+    assert got_hash == expected
+    sock.close()
+
+
+def test_checksum_unknown_file(server):
+    sock = connect(server)
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    send_request(sock, 2, build_checksum("nonexistent.txt", 0))
+    _, resp = recv_response(sock)
+    assert resp[0] == 1  # failed
+    sock.close()
+
+
+def test_getfile_test_lyc(server):
+    sock = connect(server)
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    send_request(sock, 2, build_getfile("license/test.lyc"))
+    _, resp = recv_response(sock)
+    assert resp[0] == 0
+    assert resp[1:] == b"\x01\x02\x03\x04\x05\x06\x07\x08"
     sock.close()

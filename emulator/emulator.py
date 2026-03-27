@@ -2,6 +2,8 @@
 """MN4 Head Unit Emulator — NFTP server over TCP."""
 
 import argparse
+import hashlib
+import os
 import socket
 import struct
 import sys
@@ -18,6 +20,13 @@ FAKE_DEVICE_NNG = (
     b"VIN=UU1TESTVIN0000000\n"
     b"IGO=9.12.179.000000\n"
 )
+
+# Fake files served by the emulator
+FAKE_FILES = {
+    "license/device.nng": FAKE_DEVICE_NNG,
+    "license/test.lyc": b"\x01\x02\x03\x04\x05\x06\x07\x08",
+    "content/map/test.fbl": b"FAKE-MAP-DATA-" + bytes(range(256)),
+}
 
 
 def encode_vlu(value):
@@ -144,18 +153,36 @@ def handle_connection(conn, addr, verbose):
                     print(f"  Init from '{name}' -> OK")
             elif cmd == 3:  # GetFile
                 fname, _ = parse_null_string(body, 1)
-                if "device.nng" in fname:
-                    send_response(conn, pkt_id, b"\x00" + FAKE_DEVICE_NNG)
+                file_data = FAKE_FILES.get(fname)
+                if file_data is not None:
+                    send_response(conn, pkt_id, b"\x00" + file_data)
                     if verbose:
-                        print(f"  GetFile '{fname}' -> {len(FAKE_DEVICE_NNG)} bytes")
+                        print(f"  GetFile '{fname}' -> {len(file_data)} bytes")
                 else:
-                    send_response(conn, pkt_id, b"\x01")
+                    send_response(conn, pkt_id, b"\x01EACCESS")
                     if verbose:
-                        print(f"  GetFile '{fname}' -> not found")
+                        print(f"  GetFile '{fname}' -> EACCESS")
             elif cmd == 4:  # QueryInfo
                 send_response(conn, pkt_id, b"\x00")
                 if verbose:
                     print("  QueryInfo -> OK (empty)")
+            elif cmd == 5:  # CheckSum
+                method = body[1]
+                fname, offset = parse_null_string(body, 2)
+                file_data = FAKE_FILES.get(fname)
+                if file_data is not None:
+                    if method == 0:
+                        h = hashlib.md5(file_data).digest()
+                    else:
+                        h = hashlib.sha1(file_data).digest()
+                    send_response(conn, pkt_id, b"\x00" + h)
+                    if verbose:
+                        mname = "MD5" if method == 0 else "SHA1"
+                        print(f"  CheckSum {mname} '{fname}' -> {h.hex()}")
+                else:
+                    send_response(conn, pkt_id, b"\x01")
+                    if verbose:
+                        print(f"  CheckSum '{fname}' -> not found")
             else:
                 send_response(conn, pkt_id, b"\x7f")
                 if verbose:

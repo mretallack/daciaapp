@@ -1,5 +1,7 @@
 package com.dacia.nftp;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -43,14 +45,52 @@ public class HeadUnitExplorer {
         this.log = logger;
         this.conn = new NftpConnection(in, out);
 
-        NftpProbe.Result result = NftpProbe.run(in, out, logger);
-        if (!result.isSuccess()) {
+        // Init
+        byte[] initBody = NftpProbe.buildInit();
+        log.log("Init (" + initBody.length + " bytes)");
+        byte[] initResp = conn.sendAndReceive(initBody);
+        if (initResp.length == 0 || initResp[0] != 0x00) {
             conn = null;
-            throw new IOException(result.error);
+            throw new IOException("Init failed: status=" + (initResp.length > 0 ? (initResp[0] & 0xFF) : -1));
         }
-        this.serverName = result.serverName;
-        this.serverVersion = result.serverVersion;
-        this.deviceNng = result.deviceNng;
+        ByteArrayInputStream ris = new ByteArrayInputStream(initResp, 1, initResp.length - 1);
+        serverVersion = (int) VluCodec.decode(ris);
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        int b; while ((b = ris.read()) > 0) buf.write(b);
+        serverName = buf.toString("ASCII");
+        log.log("Connected: " + serverName + " v" + serverVersion);
+
+        // GetFile device.nng
+        try {
+            deviceNng = readFile("license/device.nng");
+            log.log("Got device.nng: " + deviceNng.length + " bytes");
+        } catch (IOException e) {
+            log.log("device.nng: " + e.getMessage());
+        }
+    }
+
+    /** Read a file from the head unit. */
+    public byte[] readFile(String path) throws IOException {
+        checkConnected();
+        byte[] body = NftpProbe.buildGetFile(path);
+        log.log("GetFile " + path);
+        byte[] resp = conn.sendAndReceive(body);
+        if (resp.length == 0 || resp[0] != 0x00) {
+            int status = resp.length > 0 ? (resp[0] & 0xFF) : -1;
+            String err = resp.length > 1 ? new String(resp, 1, resp.length - 1, "UTF-8").trim() : "";
+            log.log("GetFile failed: status=" + status + " " + err);
+            throw new IOException("GetFile " + path + ": status=" + status + " " + err);
+        }
+        byte[] data = new byte[resp.length - 1];
+        System.arraycopy(resp, 1, data, 0, data.length);
+        log.log("GetFile " + path + ": " + data.length + " bytes");
+        return data;
+    }
+
+    /** Compute checksum of a remote file. Returns hex string. */
+    public String getChecksum(String path, int method) throws IOException {
+        checkConnected();
+        return NftpProbe.checkSum(conn, log, path, method);
     }
 
     /** Get the default file mapping from the v1.8.13 app. */
@@ -87,30 +127,6 @@ public class HeadUnitExplorer {
             entries.add(new FileEntry("device.nng", "license/device.nng", false));
         }
         return entries;
-    }
-
-    /** Read a file from the head unit. */
-    public byte[] readFile(String path) throws IOException {
-        checkConnected();
-        byte[] body = NftpProbe.buildGetFile(path);
-        log.log("GetFile " + path + " (" + body.length + " bytes)");
-        byte[] resp = conn.sendAndReceive(body);
-        if (resp.length == 0 || resp[0] != 0x00) {
-            int status = resp.length > 0 ? (resp[0] & 0xFF) : -1;
-            String err = resp.length > 1 ? new String(resp, 1, resp.length - 1, "UTF-8").trim() : "";
-            log.log("GetFile failed: status=" + status + " " + err);
-            throw new IOException("GetFile " + path + ": status=" + status + " " + err);
-        }
-        byte[] data = new byte[resp.length - 1];
-        System.arraycopy(resp, 1, data, 0, data.length);
-        log.log("GetFile " + path + ": " + data.length + " bytes");
-        return data;
-    }
-
-    /** Compute checksum of a remote file. Returns hex string. */
-    public String getChecksum(String path, int method) throws IOException {
-        checkConnected();
-        return NftpProbe.checkSum(conn, log, path, method);
     }
 
     private void checkConnected() throws IOException {
