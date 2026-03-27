@@ -77,9 +77,17 @@ public class NftpProbe {
             log.log(new String(fileData, "UTF-8").trim());
 
             // QueryInfo — test serialisation against head unit
-            Object fileMappingResult = queryInfo(conn, log, "fileMapping");
-            Object deviceResult = queryInfo(conn, log, "device", "brand");
-            Object freeSpaceResult = queryInfo(conn, log, "freeSpace");
+            // String identifiers return empty — try symbol ID scan
+            log.log("Scanning symbol IDs 14-200 for QueryInfo responses...");
+            for (int symId = 14; symId <= 200; symId++) {
+                byte[] qBody = buildQueryInfoBySymbolId(symId);
+                byte[] qResp = conn.sendAndReceive(qBody);
+                // Check if response has data beyond empty tuple (1f 00)
+                if (qResp.length > 3) {
+                    log.log("Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 64));
+                }
+            }
+            log.log("Symbol scan complete");
 
             log.log("Probe complete");
 
@@ -124,6 +132,21 @@ public class NftpProbe {
         byte[] zero = VluCodec.encode(0);
         buf.write(zero, 0, zero.length);
         buf.write(zero, 0, zero.length);
+        return buf.toByteArray();
+    }
+
+    /** Build QueryInfo with a single symbol ID. */
+    static byte[] buildQueryInfoBySymbolId(int symbolId) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x04); // command type
+        NngSerializer ser = new NngSerializer();
+        // Write tuple of 1 item: IdSymbolVLI
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(1);
+        ser.writeTag(NngSerializer.TAG_ID_SYMBOL_VLI);
+        ser.writeVli(symbolId);
+        byte[] payload = ser.toBytes();
+        buf.write(payload, 0, payload.length);
         return buf.toByteArray();
     }
 
