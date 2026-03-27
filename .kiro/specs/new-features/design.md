@@ -53,37 +53,37 @@ VLU = variable-length unsigned int (7 bits per byte, MSB = continuation)
 
 Symbols (like `@device`, `@brand`, `@fileMapping`, `@ls`) are encoded as `IdentifierSymbol` or `IdSymbolVLI` with an integer symbol ID. The symbol table is maintained by the NNG SDK runtime — we need to discover the mapping.
 
-### Symbol ID Discovery
+### Symbol ID Discovery — BLOCKED
 
-The `.xs` scripts use `@device`, `@brand`, `@fileMapping`, `@ls`, `@freeSpace`, `@diskInfo` etc. These are NNG symbols with integer IDs assigned at compile time or runtime.
+The `.xs` scripts use `@device`, `@brand`, `@fileMapping`, `@ls`, `@freeSpace`, `@diskInfo` etc. These are NNG symbols with integer IDs assigned sequentially at runtime by the NNG SDK.
 
-**Approach**: Rather than reverse-engineering the symbol table, we can:
-1. Use `IdentifierString` (tag 13) instead of `IdentifierSymbol` — write the key as a string like `"device"`, `"brand"`, `"fileMapping"`. The server-side Reader should accept string identifiers.
-2. If string identifiers don't work, capture the wire bytes from the official app to discover the symbol IDs.
+**Status: Symbol IDs are unknown and all discovery approaches have failed so far.**
 
-From the `nftp.xs` source, `queryInfo` serialises keys as:
-```javascript
-w.u8(Message.QueryInfo);  // 0x04
-writeValue(w, keys)       // Stream(@compact).add(keys) — serialises a tuple of identifiers
-```
+Investigation (2025-03-27) confirmed:
+- **IdentifierString (tag 13) does not work** — the server deserialises it as `NNGIdentifier(String)` which never equals `NNGIdentifier(NngSymbol)` due to Java type mismatch in `equals()`
+- **Brute-force scan of IDs 0–5000** returned `@unknown` for every ID
+- **Sparse scan of IDs 5000–100000** (pending) — may find them if IDs are larger than expected
+- The symbol IDs are assigned sequentially: 736 SDK symbols first, then `.xs` script symbols in module load order
+- Both phone app and head unit share the same NNG SDK + `core/nftp.xs`, so IDs should match — but the exact values are unknown
 
-Where `keys` is a tuple like `(@device, @brand)` or `(@fileMapping)` or `(@ls, "content")`.
+**Impact on features:**
+- QueryInfo (`@device`, `@brand`, `@fileMapping`, `@freeSpace`, `@diskInfo`) — **BLOCKED**
+- Directory listing (`@ls`) — **BLOCKED**
+- Device info tab — **BLOCKED** (partial workaround: parse `device.nng` from GetFile)
+- Explorer directory browsing — **BLOCKED** (workaround: use hardcoded file mapping paths)
 
-### QueryInfo Request Format
+**Features that work without QueryInfo:**
+- GetFile with known/mapped paths
+- CheckSum (MD5/SHA1) for known paths
+- Tab-based UI layout
+- Log tab
+- File detail dialog (download, save, checksum)
 
-```
-[0x04]                          — command type
-[compact-serialised tuple]      — keys to query
-```
+### Workarounds for Blocked Features
 
-The tuple contains identifier symbols. For `@ls`, the second element is a string path.
-
-### QueryInfo Response Format
-
-```
-[0x00]                          — status (success)
-[compact-serialised value]      — response data (tuple of results, one per key)
-```
+1. **Device info**: Parse `device.nng` binary (already downloaded via GetFile) to extract SWID, VIN, etc. instead of QueryInfo `@device`
+2. **Explorer**: Use the hardcoded default file mapping to provide a fixed directory structure (`license/`, `content/map/`, `content/poi/`, `content/speedcam/`) instead of dynamic `@ls` browsing
+3. **File mapping**: Use the default mapping from the v1.8.13 app as a fallback since we can't query `@fileMapping`
 
 ### CheckSum Request Format (from nftp.xs)
 
@@ -114,25 +114,30 @@ Replace the current single-screen log view with a tabbed interface:
 
 ### Explorer Tab Detail
 
-The explorer is the primary new feature. It shows:
-- Current path as breadcrumb (e.g. `/` → `content/` → `content/map/`)
-- List of entries: icon (folder/file), name, size, modified date
-- Tap folder → navigate into it
+The explorer shows the head unit's filesystem based on the hardcoded file mapping (dynamic `@ls` directory listing is blocked — see Symbol ID Discovery above).
+
+- Fixed directory tree derived from the default file mapping:
+  - `license/` — device.nng, license files (.lyc)
+  - `content/map/` — map files (.fbl, .hnr, .fda, etc.)
+  - `content/poi/` — POI files (.poi)
+  - `content/speedcam/` — speed camera files (.spc)
+- Tap folder → show known files in that path (via GetFile probing or hardcoded list)
 - Tap file → show detail sheet with:
-  - Full path, size, modified time
+  - Full path, size (from GetFile response length)
   - "Get MD5" button → runs CheckSum
+  - "Get SHA1" button → runs CheckSum
   - "Download" button → runs GetFile, shows hex dump + saves to phone storage
-- Pull-to-refresh to re-query current directory
+- No dynamic directory browsing (requires `@ls` via QueryInfo)
 
 ### Connection Flow
 
 On USB attach or manual connect:
 1. Init handshake (existing)
-2. QueryInfo `@fileMapping` → store mapping
-3. QueryInfo `@device`, `@brand` → populate Device tab
-4. QueryInfo `@freeSpace`, `@diskInfo` → show in Device tab
-5. Explorer tab becomes available, starts at root (`""`)
-
+2. GetFile `license/device.nng` → parse for device info (SWID, VIN, etc.)
+3. Use hardcoded default file mapping (QueryInfo `@fileMapping` blocked)
+4. Explorer tab becomes available with fixed directory structure from file mapping
+5. ~~QueryInfo `@device`, `@brand` → populate Device tab~~ (BLOCKED — use device.nng instead)
+6. ~~QueryInfo `@freeSpace`, `@diskInfo` → show in Device tab~~ (BLOCKED)
 ## Implementation Plan
 
 ### nftp-core changes
@@ -161,13 +166,6 @@ On USB attach or manual connect:
 6. **ExplorerAdapter** — RecyclerView adapter for directory listings
 7. **FileDetailActivity** — shows file info, checksum, download options
 
-### Serialisation Priority
-
-The biggest unknown is whether string-based identifiers work for QueryInfo. The first implementation step should be:
-1. Send `queryInfo` with string identifiers
-2. If that fails, capture official app traffic to discover symbol IDs
-3. Fall back to raw hex if needed
-
 ## Safety
 
 - All operations are read-only (QueryInfo, GetFile, CheckSum)
@@ -177,7 +175,7 @@ The biggest unknown is whether string-based identifiers work for QueryInfo. The 
 
 ## Key Risks
 
-1. **NNG serialisation format** — may have undocumented quirks; string identifiers may not work
+1. **Symbol IDs — REALIZED** — String identifiers don't work, brute-force scan hasn't found the IDs. QueryInfo, directory listing, and device/disk info are blocked until IDs are discovered. Workarounds in place using GetFile + hardcoded paths.
 2. **Large files** — GetFile for big map files (hundreds of MB) needs streaming, not buffering in memory
-3. **Symbol IDs** — if string identifiers are rejected, we need to reverse-engineer the symbol table
-4. **Connection stability** — USB AOA can disconnect at any time; need graceful handling
+3. **Connection stability** — USB AOA can disconnect at any time; need graceful handling
+4. **device.nng format** — Binary format, partially understood. Need to parse it for device info as a workaround for blocked QueryInfo `@device`.

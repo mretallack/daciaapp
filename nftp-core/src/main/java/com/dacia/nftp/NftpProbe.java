@@ -76,11 +76,22 @@ public class NftpProbe {
             log.log("Got device.nng: " + fileData.length + " bytes");
             log.log(new String(fileData, "UTF-8").trim());
 
-            // Symbol IDs are sequential: 736 SDK symbols first, then .xs script symbols.
-            // Scan from 700 to 1500 to find app-level symbols.
-            log.log("Scanning symbol IDs 700-1500...");
+            // Symbol scan: 0-500 returned @unknown, 700-1500 returned @unknown.
+            // Try much wider range: 1500-5000, then sparse sampling up to 100000
+            log.log("Scanning symbol IDs 1500-5000...");
             int foundCount = 0;
-            for (int symId = 700; symId <= 1500; symId++) {
+            for (int symId = 1500; symId <= 5000; symId++) {
+                byte[] qBody = buildQueryInfoBySymbolId(symId);
+                byte[] qResp = conn.sendAndReceive(qBody);
+                boolean isUnknown = qResp.length == 12;
+                if (!isUnknown) {
+                    log.log("*** Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 128));
+                    foundCount++;
+                }
+            }
+            // Sparse scan 5000-100000 step 50
+            log.log("Sparse scanning 5000-100000 step 50...");
+            for (int symId = 5000; symId <= 100000; symId += 50) {
                 byte[] qBody = buildQueryInfoBySymbolId(symId);
                 byte[] qResp = conn.sendAndReceive(qBody);
                 boolean isUnknown = qResp.length == 12;

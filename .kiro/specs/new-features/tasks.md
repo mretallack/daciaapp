@@ -54,7 +54,7 @@ All new code must log extensively to aid debugging, especially for protocol-leve
   - [x] Decode a dict
   - [x] Round-trip: encode then decode
 
-## 3. QueryInfo Support
+## 3. QueryInfo Support — SKIPPED (symbol IDs unknown)
 
 - [x] Add `buildQueryInfo(String... keys)` to `NftpProbe` — builds `[0x04][serialised tuple of identifier strings]`
 - [x] Log the keys being queried (e.g. `"QueryInfo: requesting [@device, @brand]"`)
@@ -66,9 +66,9 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 - [x] Test with string-based identifiers against real head unit
   - String identifiers are accepted (status=0) but return empty results — server doesn't match them
   - Server expects integer symbol IDs (IdentifierSymbol/IdSymbolVLI), not string identifiers
-- [ ] Discover symbol IDs for @device, @brand, @fileMapping, @freeSpace, @diskInfo, @ls
-- [ ] If string identifiers fail, log the exact error and raw response for debugging
-- [ ] If string identifiers fail, investigate symbol ID approach (capture official app traffic)
+- [~] Discover symbol IDs for @device, @brand, @fileMapping, @freeSpace, @diskInfo, @ls — SKIPPED: brute-force scan of 0–5000 all returned @unknown, sparse scan pending
+- [~] If string identifiers fail, log the exact error and raw response for debugging — DONE: root cause is type mismatch in NNGIdentifier.equals()
+- [~] If string identifiers fail, investigate symbol ID approach (capture official app traffic) — SKIPPED for now
 - [x] Write `NftpQueryInfoTest` with fake server
   - [x] Single key query
   - [x] Multi-key query
@@ -100,27 +100,25 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 
 - [ ] Create `HeadUnitExplorer.java` in `nftp-core`
 - [ ] Accept a `Logger` interface (same as NftpProbe) for all logging
-- [ ] `connect(InputStream, OutputStream)` — Init handshake + query fileMapping
-  - [ ] Log: server name, version, fileMapping contents
-- [ ] `getDeviceInfo()` — QueryInfo `@device`, `@brand` → returns parsed `DeviceInfo` object
-  - [ ] Log: each parsed field (swid, vin, igoVersion, etc.)
-- [ ] `getDiskInfo()` — QueryInfo `@freeSpace`, `@diskInfo` → returns `DiskInfo` object
-  - [ ] Log: total size, free space, percentage used
-- [ ] `listDirectory(String path)` — QueryInfo `@ls` → returns `List<FileEntry>`
-  - [ ] Log: path being listed, number of entries returned, each entry name+size+type
+- [ ] `connect(InputStream, OutputStream)` — Init handshake + load default file mapping
+  - [ ] Log: server name, version, file mapping (hardcoded default)
+- [~] `getDeviceInfo()` — SKIPPED: QueryInfo `@device`, `@brand` blocked. Workaround: parse device.nng
+- [~] `getDiskInfo()` — SKIPPED: QueryInfo `@freeSpace`, `@diskInfo` blocked
+- [~] `listDirectory(String path)` — SKIPPED: QueryInfo `@ls` blocked. Workaround: use hardcoded file mapping tree
 - [ ] `readFile(String path)` — GetFile → returns `byte[]`
   - [ ] Log: path, response size, first 64 bytes as hex
 - [ ] `getChecksum(String path, int method)` — CheckSum → returns hex string
   - [ ] Log: path, method, result hex string
 - [ ] Log all errors with full context: operation name, path, status code, raw response hex
 - [ ] `FileEntry` data class: name, path, size, isFile, mtimeMs
-- [ ] `DeviceInfo` data class: appcid, igoVersion, swid, sku, firstUse, imei, vin, agentBrand, modelName, brandName
-- [ ] `DiskInfo` data class: totalSize, freeSpace
+- [~] `DeviceInfo` data class — SKIPPED until QueryInfo works or device.nng parsing implemented
+- [~] `DiskInfo` data class — SKIPPED until QueryInfo works
+- [ ] `getDefaultFileMapping()` — returns hardcoded mapping from v1.8.13 app
 - [ ] Write `HeadUnitExplorerTest` with fake server
   - [ ] Connect and Init
-  - [ ] getDeviceInfo returns parsed fields
-  - [ ] getDiskInfo returns size and free space
-  - [ ] listDirectory returns file entries
+  - [~] getDeviceInfo returns parsed fields — SKIPPED
+  - [~] getDiskInfo returns size and free space — SKIPPED
+  - [~] listDirectory returns file entries — SKIPPED
   - [ ] readFile returns file bytes
   - [ ] getChecksum returns hex string
   - [ ] Error handling — query after disconnect
@@ -137,24 +135,27 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 ## 8. UI — Device Tab
 
 - [ ] Create `fragment_device.xml` — list of key-value pairs
-- [ ] DeviceFragment queries `getDeviceInfo()` after connection
-- [ ] Display: SWID, VIN, iGo version, model name, brand, appcid, SKU, first use date
-- [ ] Display: disk total size, free space, percentage used
+- [~] DeviceFragment queries `getDeviceInfo()` after connection — SKIPPED: QueryInfo blocked. Show device.nng raw info instead
+- [ ] Display: connection status, server name/version
+- [ ] Display: device.nng file size and raw hex preview
+- [~] Display: SWID, VIN, iGo version, model name, brand, appcid, SKU, first use date — SKIPPED until device.nng parsing or QueryInfo works
+- [~] Display: disk total size, free space, percentage used — SKIPPED until QueryInfo works
 - [ ] Show "Not connected" state when no connection
 
 ## 9. UI — Explorer Tab
 
-- [ ] Create `fragment_explorer.xml` — breadcrumb bar + RecyclerView
-- [ ] Create `item_file_entry.xml` — row layout: icon, name, size, date
+- [ ] Create `fragment_explorer.xml` — list of known paths from hardcoded file mapping
+- [ ] Create `item_file_entry.xml` — row layout: icon, name, path
 - [ ] Create `ExplorerAdapter` — RecyclerView.Adapter for `List<FileEntry>`
-- [ ] Breadcrumb bar shows current path, tappable segments to navigate up
-- [ ] Tap folder → call `listDirectory(path)` → update adapter
-  - [ ] Log: "Navigating to: <path>"
+- [ ] Show fixed directory tree from default file mapping:
+  - `license/` — device.nng, license files
+  - `content/map/` — map files
+  - `content/poi/` — POI files
+  - `content/speedcam/` — speed camera files
 - [ ] Tap file → show file detail dialog/sheet
-  - [ ] Log: "Selected file: <path> (<size> bytes)"
-- [ ] Back button navigates up one directory level
-- [ ] Show loading spinner during directory queries
-- [ ] Handle empty directories — log and show "Empty directory" message
+  - [ ] Log: "Selected file: <path>"
+- [~] Dynamic directory browsing via `@ls` — SKIPPED: QueryInfo blocked
+- [~] Breadcrumb navigation — SKIPPED: no dynamic browsing
 - [ ] Handle errors (EACCESS, connection lost) — log full error, show user-friendly message
 
 ## 10. UI — File Detail Dialog
@@ -180,38 +181,24 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 
 ## 12. Emulator Updates
 
-- [ ] Add QueryInfo handler to Python emulator
-  - [ ] Handle `@device` — return fake device info
-  - [ ] Handle `@brand` — return fake brand info
-  - [ ] Handle `@fileMapping` — return default mapping
-  - [ ] Handle `@freeSpace` — return fake value
-  - [ ] Handle `@diskInfo` — return fake size + available
-  - [ ] Handle `@ls` — return fake directory listing
+- [~] Add QueryInfo handler to Python emulator — SKIPPED: QueryInfo blocked on real device
 - [ ] Add CheckSum handler to emulator — return MD5/SHA1 of served files
-- [ ] Write emulator tests for new handlers
-  - [ ] QueryInfo `@device` returns expected fields
-  - [ ] QueryInfo `@brand` returns expected fields
-  - [ ] QueryInfo `@fileMapping` returns mapping dict
-  - [ ] QueryInfo `@freeSpace` returns integer
-  - [ ] QueryInfo `@diskInfo` returns size + available
-  - [ ] QueryInfo `@ls` returns directory entries
-  - [ ] QueryInfo `@ls` for nonexistent path returns error
+- [ ] Add multiple test files to emulator for explorer testing
+- [ ] Write emulator tests for CheckSum handler
   - [ ] CheckSum MD5 returns correct hash
   - [ ] CheckSum SHA1 returns correct hash
   - [ ] CheckSum for unknown file returns error
 
 ## 13. Integration Testing
 
-- [ ] Test QueryInfo against real head unit — verify string identifiers work
-  - [ ] Log raw request and response bytes for each query type
-- [ ] Test `@ls` directory browsing on real head unit
-  - [ ] Log full directory listing for root, content/, license/
-- [ ] Test GetFile for various paths (config files, .xs scripts, license files)
+- [~] Test QueryInfo against real head unit — SKIPPED: symbol IDs unknown
+- [~] Test `@ls` directory browsing on real head unit — SKIPPED: symbol IDs unknown
+- [ ] Test GetFile for various mapped paths (license/device.nng, etc.)
   - [ ] Log file sizes and first 64 bytes hex for each
 - [ ] Test CheckSum against real head unit
   - [ ] Log checksum results and compare with GetFile + local hash
 - [ ] Test Explorer UI end-to-end with emulator
-- [ ] Test Explorer UI end-to-end with real head unit
+- [ ] Test Explorer UI end-to-end with real head unit (hardcoded paths)
 - [ ] Document results and any protocol findings
 - [ ] Review all logs from real head unit tests — capture any unexpected responses or errors
 
