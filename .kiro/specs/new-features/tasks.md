@@ -1,5 +1,16 @@
 # NFTP Probe — Explorer Features Tasks
 
+## Logging Guidelines
+
+All new code must log extensively to aid debugging, especially for protocol-level operations where the wire format is partially reverse-engineered. Every log message goes through the `Logger` interface so it appears both in Android logcat and the app's Log tab.
+
+- **Serialisation**: Log raw hex bytes for every encode/decode operation
+- **Protocol requests**: Log command type, parameters, and raw request bytes
+- **Protocol responses**: Log status code, raw response bytes (first 128), and parsed values
+- **Errors**: Log full context — operation name, path/key, status code, raw hex, exception message
+- **Explorer navigation**: Log every directory change, file selection, and action
+- **Unknown/unexpected data**: Log the raw hex and tag values so we can diagnose format issues
+
 ## 1. NNG Compact Serialisation — Encoder
 
 - [ ] Create `NngSerializer.java` in `nftp-core`
@@ -10,6 +21,7 @@
 - [ ] Implement `writeIdentifierString(String name)` — tag 13 + VLU length + UTF-8 bytes
 - [ ] Implement `writeTuple(Object... items)` — tag 30 (TupleVLILen) + VLU count + serialised items
 - [ ] Implement `toBytes()` — return the serialised byte array
+- [ ] Log encoded bytes as hex after every `toBytes()` call (e.g. `"NngSerializer: encoded 14 bytes: 1e 02 0d 06 ..."`)
 - [ ] Write `NngSerializerTest`
   - [ ] Encode a single string
   - [ ] Encode an identifier string
@@ -33,7 +45,9 @@
 - [ ] Handle tag 26 (Int32VLI) → `Integer` (VLI decoded)
 - [ ] Handle tag 27 (Int64VLI) → `Long` (VLI decoded)
 - [ ] Handle tag 31 (ArrayVLILen) → `Object[]`
-- [ ] Handle unknown tags gracefully — log and skip
+- [ ] Handle unknown tags gracefully — log tag value and hex context, then skip
+- [ ] Log every decoded value with type and content (e.g. `"NngDeserializer: tag=3 String 'device'"`, `"NngDeserializer: tag=26 Int32VLI 42"`)
+- [ ] Log raw hex of input data at start of decode (first 64 bytes)
 - [ ] Write `NngDeserializerTest`
   - [ ] Decode each supported type
   - [ ] Decode a nested tuple
@@ -43,8 +57,14 @@
 ## 3. QueryInfo Support
 
 - [ ] Add `buildQueryInfo(String... keys)` to `NftpProbe` — builds `[0x04][serialised tuple of identifier strings]`
+- [ ] Log the keys being queried (e.g. `"QueryInfo: requesting [@device, @brand]"`)
+- [ ] Log the raw request bytes as hex
 - [ ] Add `parseQueryInfoResponse(byte[] resp)` — strips status byte, deserialises response
+- [ ] Log raw response bytes as hex (first 128 bytes)
+- [ ] Log parsed response structure (type and value of each field)
+- [ ] Log error responses with status code and any error string
 - [ ] Test with string-based identifiers against real head unit
+- [ ] If string identifiers fail, log the exact error and raw response for debugging
 - [ ] If string identifiers fail, investigate symbol ID approach (capture official app traffic)
 - [ ] Write `NftpQueryInfoTest` with fake server
   - [ ] Single key query
@@ -54,7 +74,10 @@
 ## 4. CheckSum Support
 
 - [ ] Add `buildCheckSum(String path, int method)` to `NftpProbe` — builds `[0x05][method][path\0][vlu:0]`
+- [ ] Log request: method name (MD5/SHA1), path, raw request bytes
 - [ ] Add `parseCheckSumResponse(byte[] resp)` — returns hex string of checksum bytes
+- [ ] Log response: status, raw checksum bytes, formatted hex string
+- [ ] Log errors with status code and any error message
 - [ ] Write `NftpCheckSumTest` with fake server
   - [ ] MD5 request and response
   - [ ] SHA1 request and response
@@ -73,12 +96,20 @@
 ## 6. High-Level Explorer API
 
 - [ ] Create `HeadUnitExplorer.java` in `nftp-core`
+- [ ] Accept a `Logger` interface (same as NftpProbe) for all logging
 - [ ] `connect(InputStream, OutputStream)` — Init handshake + query fileMapping
+  - [ ] Log: server name, version, fileMapping contents
 - [ ] `getDeviceInfo()` — QueryInfo `@device`, `@brand` → returns parsed `DeviceInfo` object
+  - [ ] Log: each parsed field (swid, vin, igoVersion, etc.)
 - [ ] `getDiskInfo()` — QueryInfo `@freeSpace`, `@diskInfo` → returns `DiskInfo` object
+  - [ ] Log: total size, free space, percentage used
 - [ ] `listDirectory(String path)` — QueryInfo `@ls` → returns `List<FileEntry>`
+  - [ ] Log: path being listed, number of entries returned, each entry name+size+type
 - [ ] `readFile(String path)` — GetFile → returns `byte[]`
+  - [ ] Log: path, response size, first 64 bytes as hex
 - [ ] `getChecksum(String path, int method)` — CheckSum → returns hex string
+  - [ ] Log: path, method, result hex string
+- [ ] Log all errors with full context: operation name, path, status code, raw response hex
 - [ ] `FileEntry` data class: name, path, size, isFile, mtimeMs
 - [ ] `DeviceInfo` data class: appcid, igoVersion, swid, sku, firstUse, imei, vin, agentBrand, modelName, brandName
 - [ ] `DiskInfo` data class: totalSize, freeSpace
@@ -115,20 +146,27 @@
 - [ ] Create `ExplorerAdapter` — RecyclerView.Adapter for `List<FileEntry>`
 - [ ] Breadcrumb bar shows current path, tappable segments to navigate up
 - [ ] Tap folder → call `listDirectory(path)` → update adapter
+  - [ ] Log: "Navigating to: <path>"
 - [ ] Tap file → show file detail dialog/sheet
+  - [ ] Log: "Selected file: <path> (<size> bytes)"
 - [ ] Back button navigates up one directory level
 - [ ] Show loading spinner during directory queries
-- [ ] Handle empty directories
-- [ ] Handle errors (EACCESS, connection lost)
+- [ ] Handle empty directories — log and show "Empty directory" message
+- [ ] Handle errors (EACCESS, connection lost) — log full error, show user-friendly message
 
 ## 10. UI — File Detail Dialog
 
 - [ ] Create `dialog_file_detail.xml` — path, size, modified date, action buttons
 - [ ] "Get MD5" button → calls `getChecksum(path, 0)` → displays result
+  - [ ] Log: "CheckSum MD5 for <path>: <result>"
 - [ ] "Get SHA1" button → calls `getChecksum(path, 1)` → displays result
+  - [ ] Log: "CheckSum SHA1 for <path>: <result>"
 - [ ] "Download" button → calls `readFile(path)` → shows hex dump for binary, text for text files
+  - [ ] Log: "Downloaded <path>: <size> bytes"
 - [ ] "Save to phone" button → saves downloaded bytes to phone Downloads folder
+  - [ ] Log: "Saved <path> to <local path>"
 - [ ] Show file size warning for large files (>1MB)
+- [ ] Log all errors with operation context
 
 ## 11. UI — Log Tab
 
@@ -162,12 +200,17 @@
 ## 13. Integration Testing
 
 - [ ] Test QueryInfo against real head unit — verify string identifiers work
+  - [ ] Log raw request and response bytes for each query type
 - [ ] Test `@ls` directory browsing on real head unit
+  - [ ] Log full directory listing for root, content/, license/
 - [ ] Test GetFile for various paths (config files, .xs scripts, license files)
+  - [ ] Log file sizes and first 64 bytes hex for each
 - [ ] Test CheckSum against real head unit
+  - [ ] Log checksum results and compare with GetFile + local hash
 - [ ] Test Explorer UI end-to-end with emulator
 - [ ] Test Explorer UI end-to-end with real head unit
 - [ ] Document results and any protocol findings
+- [ ] Review all logs from real head unit tests — capture any unexpected responses or errors
 
 ## 14. Documentation
 
