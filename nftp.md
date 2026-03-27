@@ -286,7 +286,42 @@ The NNG SDK uses a symbol interning system. Key findings from decompiling the 31
 - If the symbol is new, assigns the next sequential ID from a counter at `(symbolTable + 0xf8)`
 - 977 call sites in the binary — every `@symbol` in `.xs` source goes through this function
 
+**Decompiled symbol_intern (`FUN_00af8b08`):**
+```c
+uint32_t symbol_intern(char *name) {
+    SymbolTable *table = get_global_symbol_table();  // DAT_01eb0358, lazy-init
+    if (name == NULL || *name == '\0') return 0;
+    
+    uint32_t next_id = table->counter;  // at table + 0xf8
+    HashResult result = hash_lookup(table, name);
+    
+    if (result.is_new) {
+        table->counter++;              // increment for next symbol
+        result.entry->name = name;     // store the string
+        register_symbol(table, next_id, name);  // FUN_00af7d6c
+    }
+    return result.entry->id;           // existing or newly assigned
+}
+```
+
+**Registration pattern — lazy via `__cxa_guard_acquire`:**
+All 977 call sites use the same pattern:
+```c
+if ((guard_var & 1) == 0) {
+    if (__cxa_guard_acquire(&guard_var) != 0) {
+        global_slot = FUN_00af8b08("symbolName", strlen);
+        __cxa_guard_release(&guard_var);
+    }
+}
+// use global_slot as the symbol ID
+```
+This means symbols are registered **on first use**, not at init time. The ID assigned depends on which code path executes first. The guard variable ensures each symbol is only registered once (thread-safe singleton pattern).
+
+**399 symbol slots extracted** (via `DAT_xxx = FUN_00af8b08(...)` pattern):
+Each symbol's ID is stored in a global variable (DAT_xxx). The remaining ~337 of the 736 symbols use patterns the regex didn't match (e.g. indirect calls, different decompiler output).
+
 **Well-known symbols** (hardcoded in Java `WellKnownSymbol.java`, IDs 0–13):
+These are NOT registered via `FUN_00af8b08`. They have fixed IDs in both the Java SDK and native runtime:
 
 | ID | Name |
 |----|------|
@@ -305,15 +340,25 @@ The NNG SDK uses a symbol interning system. Key findings from decompiling the 31
 | 12 | dispose |
 | 13 | asyncDispose |
 
-**SDK-level symbols** (736 extracted via Ghidra decompilation of all `FUN_00af8b08` call sites):
-- These are registered when the native SDK initialises, before any `.xs` scripts load
-- Include: `name` (430), `size` (not found in filtered list), `isFile` (365), `mtimeMs` (427), etc.
-- The index numbers above are sorted alphabetically, NOT the actual symbol IDs
+The counter at `symbolTable + 0xf8` likely starts at 14 (after the well-known symbols).
+
+**SDK-level symbols** (736 unique extracted from all `FUN_00af8b08` call sites):
+- Registered lazily when their containing function is first called
+- Include symbols for: UI widgets, D-Bus, filesystem, networking, crypto, serialisation, CSS, XML, math, locale, etc.
+- The registration ORDER (and therefore the IDs) depends on which native modules initialise first
+- 303 distinct functions register symbols; the top registrars are module init functions
+
+**Why we can't determine the IDs statically:**
+1. The lazy `__cxa_guard_acquire` pattern means IDs are assigned at runtime on first use
+2. The call order depends on which `.xs` scripts load first and which native modules they trigger
+3. The phone app and head unit run different `.xs` scripts (YellowBox vs YellowTool)
+4. Both share the same `liblib_nng_sdk.so`, so the native symbols get the same IDs IF the same code paths execute in the same order
+5. The `.xs` script parser also calls `FUN_00af8b08` for every `@symbol` it encounters — these interleave with the native registrations
 
 **App-level symbols** (NOT in the native binary):
 - `device`, `brand`, `fileMapping`, `freeSpace`, `diskInfo`, `ls`, `swid`, `appcid`, `igoVersion`, `imei`, `vin`, `firstUse`, `agentBrand`, `modelName`, `brandName`, `brandFiles`
 - These are defined in the `.xs` scripts and assigned IDs at runtime when scripts are loaded
-- IDs depend on the load order of `.xs` modules
+- IDs depend on the full module load order (native init + `.xs` script parsing)
 - Both the phone app and head unit must assign the same IDs because they load the same NNG SDK + same `.xs` scripts
 
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
