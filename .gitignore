@@ -10,3 +10,5 @@ __pycache__/
 venv/
 *.apk
 .DS_Store
+ghidra-project/
+ghidra-scripts/
