@@ -76,18 +76,20 @@ public class NftpProbe {
             log.log("Got device.nng: " + fileData.length + " bytes");
             log.log(new String(fileData, "UTF-8").trim());
 
-            // QueryInfo — test serialisation against head unit
-            // String identifiers return empty — try symbol ID scan
-            log.log("Scanning symbol IDs 14-200 for QueryInfo responses...");
-            for (int symId = 14; symId <= 200; symId++) {
+            // Symbol IDs are sequential: 736 SDK symbols first, then .xs script symbols.
+            // Scan from 700 to 1500 to find app-level symbols.
+            log.log("Scanning symbol IDs 700-1500...");
+            int foundCount = 0;
+            for (int symId = 700; symId <= 1500; symId++) {
                 byte[] qBody = buildQueryInfoBySymbolId(symId);
                 byte[] qResp = conn.sendAndReceive(qBody);
-                // Check if response has data beyond empty tuple (1f 00)
-                if (qResp.length > 3) {
-                    log.log("Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 64));
+                boolean isUnknown = qResp.length == 12;
+                if (!isUnknown) {
+                    log.log("*** Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 128));
+                    foundCount++;
                 }
             }
-            log.log("Symbol scan complete");
+            log.log("Scan complete. Found " + foundCount + " non-unknown responses.");
 
             log.log("Probe complete");
 
@@ -132,6 +134,20 @@ public class NftpProbe {
         byte[] zero = VluCodec.encode(0);
         buf.write(zero, 0, zero.length);
         buf.write(zero, 0, zero.length);
+        return buf.toByteArray();
+    }
+
+    /** Build QueryInfo with a raw string key (not identifier). */
+    static byte[] buildRawQueryInfo(String key) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x04);
+        NngSerializer ser = new NngSerializer();
+        // Try as a plain tuple with a single string
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(1);
+        ser.writeString(key);
+        byte[] payload = ser.toBytes();
+        buf.write(payload, 0, payload.length);
         return buf.toByteArray();
     }
 

@@ -159,6 +159,139 @@ Files on the head unit are accessed via mapped paths, not bare filenames. Reques
 
 The official app queries `@fileMapping` via QueryInfo after Init to get the head unit's actual mapping, then uses it for all file operations. The default mapping works as a fallback.
 
+### File Access Restrictions (confirmed 2025-03-27)
+
+GetFile only works for paths that match the file mapping. Attempting to read arbitrary paths returns `EACCESS` (status=1). Tested and blocked:
+
+- `yellowtool/src/main-ulc.xs` — EACCESS
+- `main-ulc.xs` — EACCESS
+- `src/main-ulc.xs` — EACCESS
+- `nngnavi/yellowtool/src/main-ulc.xs` — EACCESS
+- `yellowtool/main-ulc.xs` — EACCESS
+
+Only mapped paths work (e.g. `license/device.nng`). The head unit's YellowTool restricts file access to paths within the file mapping, preventing arbitrary filesystem reads.
+
+### QueryInfo Serialisation (investigation 2025-03-27)
+
+QueryInfo (type 4) uses NNG's proprietary compact binary serialisation format. The request body is:
+
+```
+[0x04]                          — command type
+[compact-serialised tuple]      — keys to query
+```
+
+The response is:
+
+```
+[0x00]                          — status (success)
+[compact-serialised value]      — results (tuple, one per key)
+```
+
+#### NNG Compact Serialisation Format
+
+Reverse-engineered from the decompiled `TypeTag.java`, `Serializer.java`, and `Deserializer.java` in the NNG SDK Java bindings (`com.nng.uie.api`):
+
+```
+Each value: [tag byte][payload]
+
+Tag byte: bits 0-5 = type tag, bit 7 = modifier flag
+
+Type tags:
+  0  = Undef (no payload)
+  1  = Int32 (4 bytes LE)
+  2  = UInt64 (8 bytes LE)
+  3  = String (VLU length + UTF-8 bytes)
+  4  = I18NString (same as String)
+  5  = Double (8 bytes LE)
+  6  = Tuple (u32 count + N values)
+  7  = Dict (u32 count + N key-value pairs)
+  12 = IdentifierInt (4 bytes LE)
+  13 = IdentifierString (VLU length + UTF-8 bytes)
+  15 = ObjectHandle
+  20 = ObjectHandle (with modifier)
+  21 = ByteStream (VLU length + bytes)
+  22 = Array (u32 count + N values)
+  24 = IdentifierSymbol (4 bytes LE symbol ID)
+  26 = Int32VLI (VLI-encoded signed int — zigzag + VLU)
+  27 = Int64VLI (VLI-encoded signed long)
+  28 = IdIntVLI (VLI-encoded identifier int)
+  29 = IdSymbolVLI (VLI-encoded symbol ID)
+  30 = TupleVLILen (VLU count + N values)
+  31 = ArrayVLILen (VLU count + N values)
+  32 = DictVLILen (VLU count + N key-value pairs)
+  33 = FailureVLILen
+
+VLI = variable-length signed int (zigzag encoding: (value << 1) ^ (value >> 63), then VLU)
+VLU = variable-length unsigned int (7 bits per byte, MSB = continuation)
+```
+
+#### QueryInfo Key Encoding — The Symbol ID Problem
+
+The official app's `.xs` scripts send QueryInfo keys as NNG symbols (e.g. `@device`, `@brand`, `@fileMapping`). These are serialised as `IdSymbolVLI` (tag 29) with an integer symbol ID.
+
+**Attempts to send QueryInfo from our app (all failed to return data):**
+
+1. **IdentifierString (tag 13)** — sent keys as strings like `"device"`, `"brand"`, `"fileMapping"`:
+   - Server accepts the request (status=0) but returns empty tuple `[1f 00]`
+   - The server doesn't match string identifiers against its symbol-based keys
+
+2. **Plain String (tag 3)** — sent `"@device"` as a regular string:
+   - Same result: status=0, empty tuple
+
+3. **IdSymbolVLI (tag 29) with sequential IDs 0–500** — brute-force scan:
+   - Every ID returned 12 bytes: `00 1f 01 8d 75 6e 6b 6e 6f 77 6e 00`
+   - Decoded: success + array of 1 item + IdentifierString `"unknown"`
+   - The server recognises the symbol ID format but doesn't know these IDs
+
+4. **IdSymbolVLI with IDs 700–1500** — wider scan (pending results):
+   - Based on Ghidra analysis showing 736 SDK-level symbols registered before app symbols
+
+#### NNG Symbol System (from Ghidra analysis of liblib_nng_sdk.so)
+
+The NNG SDK uses a symbol interning system. Key findings from decompiling the 31MB native library:
+
+**Symbol intern function** (`FUN_00af8b08` at offset `0x00af8b08`):
+- Takes a null-terminated string, returns a 32-bit symbol ID
+- Uses a hash table for lookup (function `FUN_00bc73a0`)
+- Hash function is **FNV-1a 64-bit** (offset basis `0xcbf29ce484222325`, prime `0x100000001b3`)
+- If the symbol is new, assigns the next sequential ID from a counter at `(symbolTable + 0xf8)`
+- 977 call sites in the binary — every `@symbol` in `.xs` source goes through this function
+
+**Well-known symbols** (hardcoded in Java `WellKnownSymbol.java`, IDs 0–13):
+
+| ID | Name |
+|----|------|
+| 0 | call |
+| 1 | length |
+| 2 | WHICH |
+| 3 | serialize |
+| 4 | getItem |
+| 5 | splice |
+| 6 | list |
+| 7 | remoteConfig |
+| 8 | iterator |
+| 9 | constructor |
+| 10 | proto |
+| 11 | asyncIterator |
+| 12 | dispose |
+| 13 | asyncDispose |
+
+**SDK-level symbols** (736 extracted via Ghidra decompilation of all `FUN_00af8b08` call sites):
+- These are registered when the native SDK initialises, before any `.xs` scripts load
+- Include: `name` (430), `size` (not found in filtered list), `isFile` (365), `mtimeMs` (427), etc.
+- The index numbers above are sorted alphabetically, NOT the actual symbol IDs
+
+**App-level symbols** (NOT in the native binary):
+- `device`, `brand`, `fileMapping`, `freeSpace`, `diskInfo`, `ls`, `swid`, `appcid`, `igoVersion`, `imei`, `vin`, `firstUse`, `agentBrand`, `modelName`, `brandName`, `brandFiles`
+- These are defined in the `.xs` scripts and assigned IDs at runtime when scripts are loaded
+- IDs depend on the load order of `.xs` modules
+- Both the phone app and head unit must assign the same IDs because they load the same NNG SDK + same `.xs` scripts
+
+**The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
+1. Discover the IDs by brute-force scanning (in progress)
+2. Intercept the official app's wire traffic to capture the actual IDs
+3. Replicate the NNG runtime's symbol assignment order
+
 ### USB AOA Read Behaviour
 
 USB AOA delivers data in bulk transfers. The standard Java pattern of reading exact byte counts (`read(buf, off, len)` requesting exactly 4 bytes for a header) **does not work** — the read blocks forever. Data must be read in bulk chunks using `read(buf)` and parsed from a buffer, matching how the official app's `nftp.xs` `msgExtractor` works with `DataReader(64*1024)`.
@@ -242,7 +375,11 @@ QueryInfo (type 4) accepts serialised keys and can return:
 - `@device` — device info (appcid, igoVersion, swid, sku, firstUse, imei, vin)
 - `@brand` — brand info (agentBrand, modelName, brandName, brandFiles)
 - `@fileMapping` — maps file extensions to paths on the head unit
-- `@ls` with path — directory listing with fields like `@name`, `@size`
+- `@freeSpace` — available disk space
+- `@diskInfo` — disk size and available space
+- `@ls` with path — directory listing with fields like `@name`, `@size`, `@isFile`, `@mtimeMs`
+
+**Status**: QueryInfo is not yet working from our app. The keys must be sent as NNG symbol IDs (IdSymbolVLI, tag 29), but the correct IDs are unknown. See "QueryInfo Serialisation" section above for full details of the investigation.
 
 ### Checksum Methods
 
@@ -250,6 +387,26 @@ QueryInfo (type 4) accepts serialised keys and can return:
 |----|--------|
 | 0 | MD5 |
 | 1 | SHA1 |
+
+### CheckSum Wire Format
+
+```
+Request:
+[0x05]              — command type
+[0x00 or 0x01]      — method (0=MD5, 1=SHA1)
+[string\0]          — null-terminated file path
+[vlu: from]         — byte offset (typically 0)
+[vlu: len]          — length (0 = whole file, optional)
+
+Response (success):
+[0x00]              — status
+[16 or 20 bytes]    — checksum (16 for MD5, 20 for SHA1)
+
+Response (error):
+[status byte]       — non-zero error code
+```
+
+**Status**: CheckSum is implemented in our app but not yet tested against the real head unit.
 
 ## AOA Identity (from decompiled v1.8.13 APK)
 
