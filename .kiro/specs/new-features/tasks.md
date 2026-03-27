@@ -63,7 +63,10 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 - [x] Log raw response bytes as hex (first 128 bytes)
 - [x] Log parsed response structure (type and value of each field)
 - [x] Log error responses with status code and any error string
-- [ ] Test with string-based identifiers against real head unit
+- [x] Test with string-based identifiers against real head unit
+  - String identifiers are accepted (status=0) but return empty results — server doesn't match them
+  - Server expects integer symbol IDs (IdentifierSymbol/IdSymbolVLI), not string identifiers
+- [ ] Discover symbol IDs for @device, @brand, @fileMapping, @freeSpace, @diskInfo, @ls
 - [ ] If string identifiers fail, log the exact error and raw response for debugging
 - [ ] If string identifiers fail, investigate symbol ID approach (capture official app traffic)
 - [x] Write `NftpQueryInfoTest` with fake server
