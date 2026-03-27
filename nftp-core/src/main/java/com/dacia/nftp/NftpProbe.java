@@ -75,6 +75,12 @@ public class NftpProbe {
             System.arraycopy(getResp, 1, fileData, 0, fileData.length);
             log.log("Got device.nng: " + fileData.length + " bytes");
             log.log(new String(fileData, "UTF-8").trim());
+
+            // QueryInfo — test serialisation against head unit
+            Object fileMappingResult = queryInfo(conn, log, "fileMapping");
+            Object deviceResult = queryInfo(conn, log, "device", "brand");
+            Object freeSpaceResult = queryInfo(conn, log, "freeSpace");
+
             log.log("Probe complete");
 
             return Result.success(serverName, serverVersion, fileData);
@@ -119,6 +125,101 @@ public class NftpProbe {
         buf.write(zero, 0, zero.length);
         buf.write(zero, 0, zero.length);
         return buf.toByteArray();
+    }
+
+    /** Build QueryInfo message: [0x04][serialised tuple of identifier strings] */
+    static byte[] buildQueryInfo(String... keys) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x04); // command type
+        NngSerializer ser = new NngSerializer();
+        Object[] items = new Object[keys.length];
+        for (int i = 0; i < keys.length; i++) {
+            items[i] = "@" + keys[i];
+        }
+        ser.writeTuple(items);
+        byte[] payload = ser.toBytes();
+        buf.write(payload, 0, payload.length);
+        return buf.toByteArray();
+    }
+
+    /** Send QueryInfo and parse response. Returns deserialised result or null on error. */
+    public static Object queryInfo(NftpConnection conn, Logger log, String... keys) throws IOException {
+        byte[] body = buildQueryInfo(keys);
+        log.log("QueryInfo [" + String.join(", ", keys) + "] (" + body.length + " bytes): " + hex(body));
+        byte[] resp = conn.sendAndReceive(body);
+        log.log("QueryInfo response (" + resp.length + " bytes): " + hex(resp, 128));
+        if (resp.length == 0 || resp[0] != 0x00) {
+            int status = resp.length > 0 ? (resp[0] & 0xFF) : -1;
+            String errMsg = resp.length > 1 ? new String(resp, 1, resp.length - 1, "UTF-8").trim() : "unknown";
+            log.log("QueryInfo failed: status=" + status + " error=" + errMsg);
+            return null;
+        }
+        if (resp.length <= 1) {
+            log.log("QueryInfo: empty response");
+            return null;
+        }
+        try {
+            Object result = NngDeserializer.decode(resp, 1);
+            log.log("QueryInfo parsed: " + describeValue(result));
+            return result;
+        } catch (Exception e) {
+            log.log("QueryInfo parse error: " + e.getClass().getName() + ": " + e.getMessage());
+            log.log("QueryInfo raw payload: " + hex(resp, resp.length));
+            return null;
+        }
+    }
+
+    /** Build CheckSum message: [0x05][method][path\0][vlu:0] */
+    static byte[] buildCheckSum(String path, int method) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x05); // command type
+        buf.write(method & 0xFF);
+        byte[] fname = (path + "\0").getBytes();
+        buf.write(fname, 0, fname.length);
+        byte[] zero = VluCodec.encode(0);
+        buf.write(zero, 0, zero.length);
+        return buf.toByteArray();
+    }
+
+    /** Send CheckSum request. Returns hex string or null on error. */
+    public static String checkSum(NftpConnection conn, Logger log, String path, int method) throws IOException {
+        String methodName = method == 0 ? "MD5" : "SHA1";
+        byte[] body = buildCheckSum(path, method);
+        log.log("CheckSum " + methodName + " " + path + " (" + body.length + " bytes): " + hex(body));
+        byte[] resp = conn.sendAndReceive(body);
+        log.log("CheckSum response (" + resp.length + " bytes): " + hex(resp, 64));
+        if (resp.length == 0 || resp[0] != 0x00) {
+            int status = resp.length > 0 ? (resp[0] & 0xFF) : -1;
+            log.log("CheckSum failed: status=" + status);
+            return null;
+        }
+        byte[] hash = new byte[resp.length - 1];
+        System.arraycopy(resp, 1, hash, 0, hash.length);
+        String hexStr = hex(hash).replace(" ", "");
+        log.log("CheckSum " + methodName + " result: " + hexStr);
+        return hexStr;
+    }
+
+    /** Describe a deserialised value for logging. */
+    static String describeValue(Object val) {
+        if (val == null) return "null";
+        if (val instanceof Object[]) {
+            Object[] arr = (Object[]) val;
+            StringBuilder sb = new StringBuilder("tuple[" + arr.length + "](");
+            for (int i = 0; i < arr.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(describeValue(arr[i]));
+                if (i >= 5) { sb.append(", ..."); break; }
+            }
+            sb.append(")");
+            return sb.toString();
+        }
+        if (val instanceof java.util.Map) {
+            java.util.Map<?, ?> map = (java.util.Map<?, ?>) val;
+            return "dict[" + map.size() + "]" + map.keySet();
+        }
+        if (val instanceof byte[]) return "bytes[" + ((byte[]) val).length + "]";
+        return val.getClass().getSimpleName() + "(" + val + ")";
     }
 
     private static String readNullTermString(InputStream in) throws IOException {

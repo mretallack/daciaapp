@@ -56,6 +56,24 @@ public class NftpProbeTest {
                 getResp.write("SWID=CK-TEST-FAKE-0000\n".getBytes());
                 sendResponse(req.id, getResp.toByteArray());
 
+                // Handle remaining requests (QueryInfo etc) — reply success with empty serialised data
+                for (int i = 0; i < 3; i++) {
+                    try {
+                        msg = NftpPacket.readMessage(in);
+                        req = (NftpPacket) msg[0];
+                        // Success + empty tuple
+                        NngSerializer ser = new NngSerializer();
+                        ser.writeTuple();
+                        ByteArrayOutputStream qResp = new ByteArrayOutputStream();
+                        qResp.write(0x00);
+                        byte[] payload = ser.toBytes();
+                        qResp.write(payload, 0, payload.length);
+                        sendResponse(req.id, qResp.toByteArray());
+                    } catch (IOException e) {
+                        break;
+                    }
+                }
+
             } catch (IOException e) {
                 // Connection closed
             }

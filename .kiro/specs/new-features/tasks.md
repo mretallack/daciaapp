@@ -13,71 +13,71 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 
 ## 1. NNG Compact Serialisation — Encoder
 
-- [ ] Create `NngSerializer.java` in `nftp-core`
-- [ ] Implement `writeTag(int tag)` — single byte
-- [ ] Implement `writeVlu(long value)` — variable-length unsigned (reuse VluCodec)
-- [ ] Implement `writeVli(long value)` — variable-length signed (zigzag encoding)
-- [ ] Implement `writeString(String s)` — tag 3 + VLU length + UTF-8 bytes
-- [ ] Implement `writeIdentifierString(String name)` — tag 13 + VLU length + UTF-8 bytes
-- [ ] Implement `writeTuple(Object... items)` — tag 30 (TupleVLILen) + VLU count + serialised items
-- [ ] Implement `toBytes()` — return the serialised byte array
-- [ ] Log encoded bytes as hex after every `toBytes()` call (e.g. `"NngSerializer: encoded 14 bytes: 1e 02 0d 06 ..."`)
-- [ ] Write `NngSerializerTest`
-  - [ ] Encode a single string
-  - [ ] Encode an identifier string
-  - [ ] Encode a tuple of identifier strings
-  - [ ] Encode a tuple with mixed types (identifier + string)
+- [x] Create `NngSerializer.java` in `nftp-core`
+- [x] Implement `writeTag(int tag)` — single byte
+- [x] Implement `writeVlu(long value)` — variable-length unsigned (reuse VluCodec)
+- [x] Implement `writeVli(long value)` — variable-length signed (zigzag encoding)
+- [x] Implement `writeString(String s)` — tag 3 + VLU length + UTF-8 bytes
+- [x] Implement `writeIdentifierString(String name)` — tag 13 + VLU length + UTF-8 bytes
+- [x] Implement `writeTuple(Object... items)` — tag 30 (TupleVLILen) + VLU count + serialised items
+- [x] Implement `toBytes()` — return the serialised byte array
+- [x] Log encoded bytes as hex after every `toBytes()` call (e.g. `"NngSerializer: encoded 14 bytes: 1e 02 0d 06 ..."`)
+- [x] Write `NngSerializerTest`
+  - [x] Encode a single string
+  - [x] Encode an identifier string
+  - [x] Encode a tuple of identifier strings
+  - [x] Encode a tuple with mixed types (identifier + string)
 
 ## 2. NNG Compact Serialisation — Decoder
 
-- [ ] Create `NngDeserializer.java` in `nftp-core`
-- [ ] Implement `readValue(byte[] data, int offset)` — returns parsed value + new offset
-- [ ] Handle tag 0 (Undef) → `null`
-- [ ] Handle tag 1 (Int32) → `Integer` (4 bytes LE)
-- [ ] Handle tag 2 (UInt64) → `Long` (8 bytes LE)
-- [ ] Handle tag 3 (String) → `String` (VLU length + UTF-8)
-- [ ] Handle tag 5 (Double) → `Double` (8 bytes LE)
-- [ ] Handle tag 6/30 (Tuple/TupleVLILen) → `Object[]`
-- [ ] Handle tag 7/32 (Dict/DictVLILen) → `Map<String, Object>`
-- [ ] Handle tag 12/28 (IdentifierInt/IdIntVLI) → `String` (prefixed with `@`)
-- [ ] Handle tag 13 (IdentifierString) → `String` (prefixed with `@`)
-- [ ] Handle tag 24/29 (IdentifierSymbol/IdSymbolVLI) → `String` (`@symbol:<id>`)
-- [ ] Handle tag 26 (Int32VLI) → `Integer` (VLI decoded)
-- [ ] Handle tag 27 (Int64VLI) → `Long` (VLI decoded)
-- [ ] Handle tag 31 (ArrayVLILen) → `Object[]`
-- [ ] Handle unknown tags gracefully — log tag value and hex context, then skip
-- [ ] Log every decoded value with type and content (e.g. `"NngDeserializer: tag=3 String 'device'"`, `"NngDeserializer: tag=26 Int32VLI 42"`)
-- [ ] Log raw hex of input data at start of decode (first 64 bytes)
-- [ ] Write `NngDeserializerTest`
-  - [ ] Decode each supported type
-  - [ ] Decode a nested tuple
-  - [ ] Decode a dict
-  - [ ] Round-trip: encode then decode
+- [x] Create `NngDeserializer.java` in `nftp-core`
+- [x] Implement `readValue(byte[] data, int offset)` — returns parsed value + new offset
+- [x] Handle tag 0 (Undef) → `null`
+- [x] Handle tag 1 (Int32) → `Integer` (4 bytes LE)
+- [x] Handle tag 2 (UInt64) → `Long` (8 bytes LE)
+- [x] Handle tag 3 (String) → `String` (VLU length + UTF-8)
+- [x] Handle tag 5 (Double) → `Double` (8 bytes LE)
+- [x] Handle tag 6/30 (Tuple/TupleVLILen) → `Object[]`
+- [x] Handle tag 7/32 (Dict/DictVLILen) → `Map<String, Object>`
+- [x] Handle tag 12/28 (IdentifierInt/IdIntVLI) → `String` (prefixed with `@`)
+- [x] Handle tag 13 (IdentifierString) → `String` (prefixed with `@`)
+- [x] Handle tag 24/29 (IdentifierSymbol/IdSymbolVLI) → `String` (`@symbol:<id>`)
+- [x] Handle tag 26 (Int32VLI) → `Integer` (VLI decoded)
+- [x] Handle tag 27 (Int64VLI) → `Long` (VLI decoded)
+- [x] Handle tag 31 (ArrayVLILen) → `Object[]`
+- [x] Handle unknown tags gracefully — log tag value and hex context, then skip
+- [x] Log every decoded value with type and content (e.g. `"NngDeserializer: tag=3 String 'device'"`, `"NngDeserializer: tag=26 Int32VLI 42"`)
+- [x] Log raw hex of input data at start of decode (first 64 bytes)
+- [x] Write `NngDeserializerTest`
+  - [x] Decode each supported type
+  - [x] Decode a nested tuple
+  - [x] Decode a dict
+  - [x] Round-trip: encode then decode
 
 ## 3. QueryInfo Support
 
-- [ ] Add `buildQueryInfo(String... keys)` to `NftpProbe` — builds `[0x04][serialised tuple of identifier strings]`
-- [ ] Log the keys being queried (e.g. `"QueryInfo: requesting [@device, @brand]"`)
-- [ ] Log the raw request bytes as hex
-- [ ] Add `parseQueryInfoResponse(byte[] resp)` — strips status byte, deserialises response
-- [ ] Log raw response bytes as hex (first 128 bytes)
-- [ ] Log parsed response structure (type and value of each field)
-- [ ] Log error responses with status code and any error string
+- [x] Add `buildQueryInfo(String... keys)` to `NftpProbe` — builds `[0x04][serialised tuple of identifier strings]`
+- [x] Log the keys being queried (e.g. `"QueryInfo: requesting [@device, @brand]"`)
+- [x] Log the raw request bytes as hex
+- [x] Add `parseQueryInfoResponse(byte[] resp)` — strips status byte, deserialises response
+- [x] Log raw response bytes as hex (first 128 bytes)
+- [x] Log parsed response structure (type and value of each field)
+- [x] Log error responses with status code and any error string
 - [ ] Test with string-based identifiers against real head unit
 - [ ] If string identifiers fail, log the exact error and raw response for debugging
 - [ ] If string identifiers fail, investigate symbol ID approach (capture official app traffic)
-- [ ] Write `NftpQueryInfoTest` with fake server
-  - [ ] Single key query
-  - [ ] Multi-key query
-  - [ ] Error response handling
+- [x] Write `NftpQueryInfoTest` with fake server
+  - [x] Single key query
+  - [x] Multi-key query
+  - [x] Error response handling
 
 ## 4. CheckSum Support
 
-- [ ] Add `buildCheckSum(String path, int method)` to `NftpProbe` — builds `[0x05][method][path\0][vlu:0]`
-- [ ] Log request: method name (MD5/SHA1), path, raw request bytes
-- [ ] Add `parseCheckSumResponse(byte[] resp)` — returns hex string of checksum bytes
-- [ ] Log response: status, raw checksum bytes, formatted hex string
-- [ ] Log errors with status code and any error message
+- [x] Add `buildCheckSum(String path, int method)` to `NftpProbe` — builds `[0x05][method][path\0][vlu:0]`
+- [x] Log request: method name (MD5/SHA1), path, raw request bytes
+- [x] Add `parseCheckSumResponse(byte[] resp)` — returns hex string of checksum bytes
+- [x] Log response: status, raw checksum bytes, formatted hex string
+- [x] Log errors with status code and any error message
 - [ ] Write `NftpCheckSumTest` with fake server
   - [ ] MD5 request and response
   - [ ] SHA1 request and response
