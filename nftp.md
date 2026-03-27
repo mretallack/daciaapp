@@ -39,18 +39,13 @@ Messages larger than ~32KB are split across multiple packets sharing the same tr
 
 Each request starts with a 1-byte command type, followed by command-specific data.
 
-| Type | Value | Description |
-|------|-------|-------------|
-| PUSH_FILE | 1 | Write a file to the head unit |
-| GET_FILE | 3 | Read a file from the head unit |
-| QUERY_INFO | 4 | Query device info (serialisation format not reverse-engineered) |
-| DELETE_FILE | 6 | Delete a file on the head unit |
+See the "Full Message Types" section below for the complete list from the decompiled v1.8.13 app. The commands originally reverse-engineered by goncalomb are summarised here.
 
 ### PUSH_FILE (1)
 ```
 [1 byte]  command type = 0x01
 [string]  remote path (null-terminated ASCII)
-[1 byte]  options = 0x00 (unknown format)
+[1 byte]  options bitmask (see PushFile Options below)
 [bytes]   file content
 ```
 
@@ -58,9 +53,12 @@ Each request starts with a 1-byte command type, followed by command-specific dat
 ```
 [1 byte]  command type = 0x03
 [string]  remote path (null-terminated ASCII)
-[1 byte]  position = 0x00 (unknown format)
+[vlu]     position (byte offset to start reading from, typically 0)
+[vlu]     length (0 = read entire file)
 ```
 Response data contains the file content.
+
+**Note:** goncalomb's `ctrl-proto.py` (reverse-engineered from older firmware) sends position as a single raw byte `0x00` and omits the length field. The decompiled v1.8.13 Dacia app — the authoritative source — sends both fields as VLU-encoded values. The older format may have worked only because the server was lenient. Our nftp-probe follows the official app's format.
 
 ### DELETE_FILE (6)
 ```
@@ -73,7 +71,7 @@ Response data contains the file content.
 
 The first byte of response data indicates status:
 - `0x00` = success (remaining bytes are payload, e.g. file content for GET_FILE)
-- Anything else = error (remaining bytes are error details)
+- Anything else = error (remaining bytes are error details, see Response Codes below)
 
 ## Head Unit Side
 
@@ -98,6 +96,8 @@ The first byte of response data indicates status:
 - The RPi is powered from the OTG port
 - SSH into the RPi over Wi-Fi to run commands
 - Proven to work on firmware 6.0.9.9 → 6.0.10.2
+- Skips Init handshake — based on older reverse engineering, may not match the actual protocol
+- Uses `socat` to bridge the USB gadget serial port to `ctrl-proto.py`
 
 ### Option B: Android Phone over USB (untested on this car)
 
@@ -113,9 +113,23 @@ The first byte of response data indicates status:
 - Same kernel patch as the RPi approach
 - Could use `ctrl-proto.py` directly
 
+### USB Gadget Configuration (from mn4-tools)
+
+The RPi USB gadget is configured with Google's AOA vendor/product IDs so `aoa2sock` on the head unit recognises it:
+
+```
+idVendor  = 0x18d1  (Google)
+idProduct = 0x2d00  (AOA accessory)
+function  = gser.usb0 (generic serial)
+```
+
+Communication goes through `/dev/ttyGS0` via `socat` to `ctrl-proto.py`.
+
 ## Status on This Car (Jogger, firmware 6.0.12.2.1166_r2)
 
-- YellowTool is present in the firmware but crashes at boot:
+- YellowTool **is running** and responds to NFTP Init on this firmware
+- Server identifies as: `YellowTool/1.18.1+15418192`, NFTP version 1
+- The boot-time crash logged below does NOT prevent YellowTool from starting when "Update with Phone" is selected:
   ```
   PBMU module starting up.
   Yellowtool's stdout hung up.
@@ -123,12 +137,33 @@ The first byte of response data indicates status:
   Yellowtool's stderr hung up.
   Yellow tool has exited.
   ```
-- It may still start when "Update with Phone" is selected from the UI — needs testing
 - No Wi-Fi hardware on this head unit, so any root shell must work over USB
 - The `autorun_bavn/autorun.sh` backdoor was removed in 6.0.10.2
 - The `logfiles_bavn/` USB debug dump still works
 
-## IP Over USB (2026-03-25)
+### Init Requirements (confirmed 2025-03-27)
+
+- The Init identifier string **must** be `YellowBox/<version>+<hash>` — the head unit silently ignores other identifiers (e.g. `NftpProbe`)
+- The working identifier from the v1.8.13 app is: `YellowBox/1.8.13+e14eabb8`
+- The head unit responds with: `YellowTool/1.18.1+15418192`
+
+### File Path Mapping (confirmed 2025-03-27)
+
+Files on the head unit are accessed via mapped paths, not bare filenames. Requesting `device.nng` directly returns `EACCESS`. The default file mapping from the v1.8.13 app:
+
+- `device.nng` → `license/device.nng`
+- `.lyc` (license files) → `license/`
+- `.fbl`, `.hnr`, `.fda` etc (map files) → `content/map/`
+- `.poi` → `content/poi/`
+- `.spc` → `content/speedcam/`
+
+The official app queries `@fileMapping` via QueryInfo after Init to get the head unit's actual mapping, then uses it for all file operations. The default mapping works as a fallback.
+
+### USB AOA Read Behaviour
+
+USB AOA delivers data in bulk transfers. The standard Java pattern of reading exact byte counts (`read(buf, off, len)` requesting exactly 4 bytes for a header) **does not work** — the read blocks forever. Data must be read in bulk chunks using `read(buf)` and parsed from a buffer, matching how the official app's `nftp.xs` `msgExtractor` works with `DataReader(64*1024)`.
+
+## IP Over USB (2025-03-25)
 
 Connected an Android phone via USB. The phone does not have Android Auto, but the USB connection may have established IP-over-USB (RNDIS or NCM network gadget). This could provide a TCP/IP path to the head unit without needing AOA.
 
@@ -193,11 +228,13 @@ The v1.8.13 Dacia Map Update app reveals significantly more commands than goncal
 
 The connection starts with an Init message:
 ```
-Client sends:  [0x00] [vlu: NFTP version (1)] [string: app identifier]
-Server replies: [0x00 success] [vlu: server NFTP version] [string: server app name]
+Client sends:  [0x00] [vlu: NFTP version (1)] [string: app identifier\0]
+Server replies: [0x00 success] [vlu: server NFTP version] [string: server app name\0]
 ```
 
-After Init, the client queries `@fileMapping` to learn where different file types live on the head unit, then reads `device.nng` to identify the device.
+After Init, the official app queries `@fileMapping` to learn where different file types live on the head unit, then reads `device.nng` to identify the device.
+
+**Note:** goncalomb's `ctrl-proto.py` (reverse-engineered from older firmware) skips Init entirely. The decompiled v1.8.13 Dacia app — the authoritative source — always sends Init first. Our nftp-probe follows the official app's behaviour.
 
 ### QueryInfo Capabilities
 
@@ -231,6 +268,18 @@ The Java/Kotlin AOA layer (`com.nng.yellowbox.AOAMod`):
 3. Passes the fd to the `.xs` runtime via `aoaCb.invoke("connected", fd)`
 4. The `.xs` side creates an NFTP connection from the fd via `nftp.createFromFd(fd, nftpHandler)`
 5. On detach, calls `aoaCb.invoke("disconnected", fd)` and closes the fd
+
+## Official App Connection Sequence
+
+Based on the decompiled v1.8.13 Dacia Map Update app, the full connection sequence is:
+
+1. USB AOA attach → open fd
+2. **Init** — send NFTP version (1) + app identifier string → receive server version + name
+3. **QueryInfo `@fileMapping`** — learn where file types live on the head unit (maps extensions to paths)
+4. **GetFile `device.nng`** — read device info (SWID, VIN, iGo version, etc.)
+5. Proceed with map update logic (PushFile, CheckSum, PrepareForTransfer, etc.)
+
+Our nftp-probe implements steps 1–4 (read-only). goncalomb's ctrl-proto.py (based on older reverse engineering) skips steps 2–4 and goes straight to file operations.
 
 ### Socket Listener (iOS / alternative path)
 

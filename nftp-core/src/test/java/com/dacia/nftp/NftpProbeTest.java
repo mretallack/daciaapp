@@ -163,7 +163,7 @@ public class NftpProbeTest {
         String log = logBuf.toString();
         assertTrue(log.contains("Sending Init"));
         assertTrue(log.contains("Connected: FakeHeadUnit v1"));
-        assertTrue(log.contains("Requesting device.nng"));
+        assertTrue(log.contains("Sending GetFile"));
         assertTrue(log.contains("Probe complete"));
     }
 }

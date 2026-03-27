@@ -10,9 +10,11 @@ Minimal Android app that connects to a MediaNav 4 head unit over USB AOA, perfor
 
 1. Phone connects to head unit via USB
 2. Head unit initiates AOA handshake (manufacturer: `NNG`, model: `YellowBox`)
-3. App sends NFTP Init → receives server name and version
-4. App sends GetFile for `device.nng` → receives device info (SWID, VIN, iGo version)
+3. App sends NFTP Init (identifying as `YellowBox/1.8.13+e14eabb8`) → receives server name and version
+4. App sends GetFile for `license/device.nng` → receives device info binary (268 bytes)
 5. Results displayed in a scrolling log view
+
+Tested and working on a Dacia Jogger with firmware 6.0.12.2.1166_r2. The head unit responds as `YellowTool/1.18.1+15418192`.
 
 ## Prerequisites
 
@@ -120,6 +122,27 @@ Probe complete
 5. The head unit should show "Phone connected!"
 6. The app runs the probe automatically and displays results
 7. Tap "Exit update" on the head unit when done
+
+### Confirmed working output (Jogger, firmware 6.0.12.2)
+
+```
+Have USB permission
+Opening USB accessory: NNG/YellowBox
+Accessory fd=108
+Sending Init (28 bytes): 00 01 59 65 6c 6c 6f 77 42 6f 78 2f ...
+Init response (29 bytes): 00 01 59 65 6c 6c 6f 77 54 6f 6f 6c ...
+Connected: YellowTool/1.18.1+15418192 v1
+Sending GetFile (22 bytes): 03 6c 69 63 65 6e 73 65 2f ...
+Got device.nng: 268 bytes
+Probe complete
+```
+
+### Key findings
+
+- The Init identifier **must** be `YellowBox/<version>+<hash>` — other strings are silently ignored
+- Files must be accessed via mapped paths (e.g. `license/device.nng`, not `device.nng`)
+- USB AOA delivers data in bulk transfers — reads must buffer and parse, not request exact byte counts
+- See [nftp.md](nftp.md) for full details
 
 ## Safety
 

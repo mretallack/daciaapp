@@ -43,9 +43,10 @@ public class NftpProbe {
         NftpConnection conn = new NftpConnection(in, out);
         try {
             // Init handshake
-            log.log("Sending Init...");
             byte[] initBody = buildInit();
+            log.log("Sending Init (" + initBody.length + " bytes): " + hex(initBody));
             byte[] initResp = conn.sendAndReceive(initBody);
+            log.log("Init response (" + initResp.length + " bytes): " + hex(initResp));
 
             if (initResp.length == 0 || initResp[0] != 0x00) {
                 int status = initResp.length > 0 ? (initResp[0] & 0xFF) : -1;
@@ -58,10 +59,11 @@ public class NftpProbe {
             String serverName = readNullTermString(respIn);
             log.log("Connected: " + serverName + " v" + serverVersion);
 
-            // GetFile device.nng
-            log.log("Requesting device.nng...");
-            byte[] getBody = buildGetFile("device.nng");
+            // GetFile device.nng — use known path from fileMapping
+            byte[] getBody = buildGetFile("license/device.nng");
+            log.log("Sending GetFile (" + getBody.length + " bytes): " + hex(getBody));
             byte[] getResp = conn.sendAndReceive(getBody);
+            log.log("GetFile response (" + getResp.length + " bytes): " + hex(getResp, 64));
 
             if (getResp.length == 0 || getResp[0] != 0x00) {
                 int status = getResp.length > 0 ? (getResp[0] & 0xFF) : -1;
@@ -78,18 +80,31 @@ public class NftpProbe {
             return Result.success(serverName, serverVersion, fileData);
 
         } catch (IOException e) {
-            log.log("Error: " + e.getMessage());
+            log.log("Error: " + e.getClass().getName() + ": " + e.getMessage());
             return Result.failure(e.getMessage());
         }
     }
 
-    /** Build Init message: [0x00][vlu:1][string:"NftpProbe\0"] */
+    static String hex(byte[] data) { return hex(data, data.length); }
+
+    static String hex(byte[] data, int max) {
+        StringBuilder sb = new StringBuilder();
+        int len = Math.min(data.length, max);
+        for (int i = 0; i < len; i++) {
+            if (i > 0) sb.append(' ');
+            sb.append(String.format("%02x", data[i] & 0xFF));
+        }
+        if (len < data.length) sb.append("...");
+        return sb.toString();
+    }
+
+    /** Build Init message: [0x00][vlu:1][string:"YellowBox/1.8.13+e14eabb8\0"] */
     static byte[] buildInit() {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         buf.write(0x00); // command type
         byte[] version = VluCodec.encode(1);
         buf.write(version, 0, version.length);
-        byte[] name = "NftpProbe\0".getBytes();
+        byte[] name = "YellowBox/1.8.13+e14eabb8\0".getBytes();
         buf.write(name, 0, name.length);
         return buf.toByteArray();
     }

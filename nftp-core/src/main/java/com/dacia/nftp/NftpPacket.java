@@ -55,15 +55,46 @@ public class NftpPacket {
             if (aborted) word1 |= 0x4000;
         }
 
-        out.write(word0 & 0xFF);
-        out.write((word0 >> 8) & 0xFF);
-        out.write(word1 & 0xFF);
-        out.write((word1 >> 8) & 0xFF);
-        out.write(data);
+        byte[] pkt = new byte[HEADER_SIZE + data.length];
+        pkt[0] = (byte) (word0 & 0xFF);
+        pkt[1] = (byte) ((word0 >> 8) & 0xFF);
+        pkt[2] = (byte) (word1 & 0xFF);
+        pkt[3] = (byte) ((word1 >> 8) & 0xFF);
+        System.arraycopy(data, 0, pkt, HEADER_SIZE, data.length);
+        out.write(pkt);
         out.flush();
     }
 
     public static NftpPacket read(InputStream in) throws IOException {
+        return read(in, 0);
+    }
+
+    public static NftpPacket read(InputStream in, int timeoutMs) throws IOException {
+        if (timeoutMs > 0) {
+            // Use a watchdog thread to close the stream on timeout
+            final Thread reader = Thread.currentThread();
+            Thread watchdog = new Thread(() -> {
+                try { Thread.sleep(timeoutMs); } catch (InterruptedException e) { return; }
+                reader.interrupt();
+            });
+            watchdog.setDaemon(true);
+            watchdog.start();
+            try {
+                NftpPacket pkt = readPacket(in);
+                watchdog.interrupt();
+                return pkt;
+            } catch (IOException e) {
+                watchdog.interrupt();
+                if (Thread.interrupted()) {
+                    throw new IOException("Read timeout (" + timeoutMs + "ms) — no data from remote");
+                }
+                throw e;
+            }
+        }
+        return readPacket(in);
+    }
+
+    private static NftpPacket readPacket(InputStream in) throws IOException {
         byte[] hdr = readExact(in, HEADER_SIZE);
         int word0 = (hdr[0] & 0xFF) | ((hdr[1] & 0xFF) << 8);
         int word1 = (hdr[2] & 0xFF) | ((hdr[3] & 0xFF) << 8);
@@ -121,7 +152,11 @@ public class NftpPacket {
 
     /** Read the first packet, then reassemble if continuation. Returns {firstPacket, fullPayload}. */
     public static Object[] readMessage(InputStream in) throws IOException {
-        NftpPacket first = read(in);
+        return readMessage(in, 0);
+    }
+
+    public static Object[] readMessage(InputStream in, int timeoutMs) throws IOException {
+        NftpPacket first = read(in, timeoutMs);
         if (!first.continuation) {
             return new Object[]{first, first.data};
         }
