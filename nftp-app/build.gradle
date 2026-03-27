@@ -20,4 +20,5 @@ android {
 
 dependencies {
     implementation project(':nftp-core')
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
 }

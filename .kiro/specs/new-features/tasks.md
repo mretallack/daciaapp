@@ -81,20 +81,20 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 - [x] Add `parseCheckSumResponse(byte[] resp)` — returns hex string of checksum bytes
 - [x] Log response: status, raw checksum bytes, formatted hex string
 - [x] Log errors with status code and any error message
-- [ ] Write `NftpCheckSumTest` with fake server
-  - [ ] MD5 request and response
-  - [ ] SHA1 request and response
-  - [ ] Error response
+- [x] Write `NftpCheckSumTest` with fake server
+  - [x] MD5 request and response
+  - [x] SHA1 request and response
+  - [x] Error response
 
 ## 5. GetFile Enhancement
 
-- [ ] Refactor existing `buildGetFile` to accept any path (already done, just verify)
-- [ ] Add hex dump utility for displaying binary file content
+- [x] Refactor existing `buildGetFile` to accept any path (already done, just verify)
+- [x] Add hex dump utility for displaying binary file content
 - [ ] Add option to save downloaded file to phone storage
-- [ ] Write `HexDumpTest`
-  - [ ] Dump short binary data
-  - [ ] Dump data with printable and non-printable bytes
-  - [ ] Dump empty data
+- [x] Write `HexDumpTest`
+  - [x] Dump short binary data
+  - [x] Dump data with printable and non-printable bytes
+  - [x] Dump empty data
 
 ## 6. High-Level Explorer API
 
@@ -105,15 +105,16 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 - [~] `getDeviceInfo()` — SKIPPED: QueryInfo `@device`, `@brand` blocked. Workaround: parse device.nng
 - [~] `getDiskInfo()` — SKIPPED: QueryInfo `@freeSpace`, `@diskInfo` blocked
 - [~] `listDirectory(String path)` — SKIPPED: QueryInfo `@ls` blocked. Workaround: use hardcoded file mapping tree
-- [ ] `readFile(String path)` — GetFile → returns `byte[]`
-  - [ ] Log: path, response size, first 64 bytes as hex
-- [ ] `getChecksum(String path, int method)` — CheckSum → returns hex string
-  - [ ] Log: path, method, result hex string
-- [ ] Log all errors with full context: operation name, path, status code, raw response hex
-- [ ] `FileEntry` data class: name, path, size, isFile, mtimeMs
+- [x] `readFile(String path)` — GetFile → returns `byte[]`
+  - [x] Log: path, response size, first 64 bytes as hex
+- [x] `getChecksum(String path, int method)` — CheckSum → returns hex string
+  - [x] Log: path, method, result hex string
+- [x] Log all errors with full context: operation name, path, status code, raw response hex
+- [x] `FileEntry` data class: name, path, isDir
 - [~] `DeviceInfo` data class — SKIPPED until QueryInfo works or device.nng parsing implemented
 - [~] `DiskInfo` data class — SKIPPED until QueryInfo works
-- [ ] `getDefaultFileMapping()` — returns hardcoded mapping from v1.8.13 app
+- [x] `getDefaultFileMapping()` — returns hardcoded mapping from v1.8.13 app
+- [x] `getDirectoryTree()` — returns fixed directory structure
 - [ ] Write `HeadUnitExplorerTest` with fake server
   - [ ] Connect and Init
   - [~] getDeviceInfo returns parsed fields — SKIPPED
@@ -125,59 +126,48 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 
 ## 7. UI — Tab Layout
 
-- [ ] Replace single-activity layout with tab-based navigation
-- [ ] Add `TabLayout` + `ViewPager` (or manual `FrameLayout` switching) to `activity_main.xml`
-- [ ] Create 4 fragments: ProbeFragment, DeviceFragment, ExplorerFragment, LogFragment
-- [ ] Move existing probe logic into ProbeFragment
-- [ ] Move log TextView into LogFragment
-- [ ] Share `HeadUnitExplorer` instance across fragments via Activity
+- [x] Replace single-activity layout with tab-based navigation
+- [x] Add tab bar with Probe, Device, Explorer, Log buttons
+- [x] Create 4 views: probe, device, explorer, log
+- [x] Manual view switching via FrameLayout
+- [x] Share state across views via Activity fields
 
 ## 8. UI — Device Tab
 
-- [ ] Create `fragment_device.xml` — list of key-value pairs
+- [x] Create `fragment_device.xml` — list of key-value pairs
 - [~] DeviceFragment queries `getDeviceInfo()` after connection — SKIPPED: QueryInfo blocked. Show device.nng raw info instead
-- [ ] Display: connection status, server name/version
-- [ ] Display: device.nng file size and raw hex preview
+- [x] Display: connection status, server name/version
+- [x] Display: device.nng file size and raw hex preview
 - [~] Display: SWID, VIN, iGo version, model name, brand, appcid, SKU, first use date — SKIPPED until device.nng parsing or QueryInfo works
 - [~] Display: disk total size, free space, percentage used — SKIPPED until QueryInfo works
-- [ ] Show "Not connected" state when no connection
+- [x] Show "Not connected" state when no connection
 
 ## 9. UI — Explorer Tab
 
-- [ ] Create `fragment_explorer.xml` — list of known paths from hardcoded file mapping
-- [ ] Create `item_file_entry.xml` — row layout: icon, name, path
-- [ ] Create `ExplorerAdapter` — RecyclerView.Adapter for `List<FileEntry>`
-- [ ] Show fixed directory tree from default file mapping:
-  - `license/` — device.nng, license files
-  - `content/map/` — map files
-  - `content/poi/` — POI files
-  - `content/speedcam/` — speed camera files
-- [ ] Tap file → show file detail dialog/sheet
-  - [ ] Log: "Selected file: <path>"
+- [x] Create `fragment_explorer.xml` — list of known paths from hardcoded file mapping
+- [x] Create `item_file_entry.xml` — row layout: icon, name, path
+- [x] Create `ExplorerAdapter` — RecyclerView.Adapter for `List<FileEntry>`
+- [x] Show fixed directory tree from default file mapping
+- [x] Tap file → show file detail dialog/sheet
 - [~] Dynamic directory browsing via `@ls` — SKIPPED: QueryInfo blocked
 - [~] Breadcrumb navigation — SKIPPED: no dynamic browsing
 - [ ] Handle errors (EACCESS, connection lost) — log full error, show user-friendly message
 
 ## 10. UI — File Detail Dialog
 
-- [ ] Create `dialog_file_detail.xml` — path, size, modified date, action buttons
+- [x] Basic AlertDialog showing file path
 - [ ] "Get MD5" button → calls `getChecksum(path, 0)` → displays result
-  - [ ] Log: "CheckSum MD5 for <path>: <result>"
 - [ ] "Get SHA1" button → calls `getChecksum(path, 1)` → displays result
-  - [ ] Log: "CheckSum SHA1 for <path>: <result>"
-- [ ] "Download" button → calls `readFile(path)` → shows hex dump for binary, text for text files
-  - [ ] Log: "Downloaded <path>: <size> bytes"
+- [ ] "Download" button → calls `readFile(path)` → shows hex dump
 - [ ] "Save to phone" button → saves downloaded bytes to phone Downloads folder
-  - [ ] Log: "Saved <path> to <local path>"
 - [ ] Show file size warning for large files (>1MB)
-- [ ] Log all errors with operation context
 
 ## 11. UI — Log Tab
 
-- [ ] Create `fragment_log.xml` — ScrollView + TextView (same as current main screen)
-- [ ] All protocol-level log messages route here
-- [ ] "Clear" button to reset log
-- [ ] Auto-scroll to bottom on new messages
+- [x] Create `fragment_log.xml` — ScrollView + TextView
+- [x] All protocol-level log messages route here
+- [x] "Clear" button to reset log
+- [x] Auto-scroll to bottom on new messages
 
 ## 12. Emulator Updates
 

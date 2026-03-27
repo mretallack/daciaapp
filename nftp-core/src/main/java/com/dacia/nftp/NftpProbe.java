@@ -76,31 +76,9 @@ public class NftpProbe {
             log.log("Got device.nng: " + fileData.length + " bytes");
             log.log(new String(fileData, "UTF-8").trim());
 
-            // Symbol scan: 0-500 returned @unknown, 700-1500 returned @unknown.
-            // Try much wider range: 1500-5000, then sparse sampling up to 100000
-            log.log("Scanning symbol IDs 1500-5000...");
-            int foundCount = 0;
-            for (int symId = 1500; symId <= 5000; symId++) {
-                byte[] qBody = buildQueryInfoBySymbolId(symId);
-                byte[] qResp = conn.sendAndReceive(qBody);
-                boolean isUnknown = qResp.length == 12;
-                if (!isUnknown) {
-                    log.log("*** Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 128));
-                    foundCount++;
-                }
-            }
-            // Sparse scan 5000-100000 step 50
-            log.log("Sparse scanning 5000-100000 step 50...");
-            for (int symId = 5000; symId <= 100000; symId += 50) {
-                byte[] qBody = buildQueryInfoBySymbolId(symId);
-                byte[] qResp = conn.sendAndReceive(qBody);
-                boolean isUnknown = qResp.length == 12;
-                if (!isUnknown) {
-                    log.log("*** Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 128));
-                    foundCount++;
-                }
-            }
-            log.log("Scan complete. Found " + foundCount + " non-unknown responses.");
+            // CheckSum test on device.nng
+            String md5 = checkSum(conn, log, "license/device.nng", 0);
+            String sha1 = checkSum(conn, log, "license/device.nng", 1);
 
             log.log("Probe complete");
 
@@ -112,9 +90,9 @@ public class NftpProbe {
         }
     }
 
-    static String hex(byte[] data) { return hex(data, data.length); }
+    public static String hex(byte[] data) { return hex(data, data.length); }
 
-    static String hex(byte[] data, int max) {
+    public static String hex(byte[] data, int max) {
         StringBuilder sb = new StringBuilder();
         int len = Math.min(data.length, max);
         for (int i = 0; i < len; i++) {
