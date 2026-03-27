@@ -65,6 +65,10 @@
 - [ ] Refactor existing `buildGetFile` to accept any path (already done, just verify)
 - [ ] Add hex dump utility for displaying binary file content
 - [ ] Add option to save downloaded file to phone storage
+- [ ] Write `HexDumpTest`
+  - [ ] Dump short binary data
+  - [ ] Dump data with printable and non-printable bytes
+  - [ ] Dump empty data
 
 ## 6. High-Level Explorer API
 
@@ -79,6 +83,13 @@
 - [ ] `DeviceInfo` data class: appcid, igoVersion, swid, sku, firstUse, imei, vin, agentBrand, modelName, brandName
 - [ ] `DiskInfo` data class: totalSize, freeSpace
 - [ ] Write `HeadUnitExplorerTest` with fake server
+  - [ ] Connect and Init
+  - [ ] getDeviceInfo returns parsed fields
+  - [ ] getDiskInfo returns size and free space
+  - [ ] listDirectory returns file entries
+  - [ ] readFile returns file bytes
+  - [ ] getChecksum returns hex string
+  - [ ] Error handling — query after disconnect
 
 ## 7. UI — Tab Layout
 
@@ -137,6 +148,16 @@
   - [ ] Handle `@ls` — return fake directory listing
 - [ ] Add CheckSum handler to emulator — return MD5/SHA1 of served files
 - [ ] Write emulator tests for new handlers
+  - [ ] QueryInfo `@device` returns expected fields
+  - [ ] QueryInfo `@brand` returns expected fields
+  - [ ] QueryInfo `@fileMapping` returns mapping dict
+  - [ ] QueryInfo `@freeSpace` returns integer
+  - [ ] QueryInfo `@diskInfo` returns size + available
+  - [ ] QueryInfo `@ls` returns directory entries
+  - [ ] QueryInfo `@ls` for nonexistent path returns error
+  - [ ] CheckSum MD5 returns correct hash
+  - [ ] CheckSum SHA1 returns correct hash
+  - [ ] CheckSum for unknown file returns error
 
 ## 13. Integration Testing
 
