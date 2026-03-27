@@ -7,7 +7,7 @@
     <application
         android:allowBackup="false"
         android:label="NFTP Probe"
-        android:theme="@android:style/Theme.DeviceDefault.Light">
+        android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
 
         <activity
             android:name=".MainActivity"

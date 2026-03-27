@@ -2,14 +2,16 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:fitsSystemWindows="true">
 
     <LinearLayout
         android:id="@+id/tabBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="#333333">
+        android:background="#1565C0"
+        android:padding="4dp">
 
         <Button android:id="@+id/tabProbe" style="@style/TabButton" android:text="Probe" />
         <Button android:id="@+id/tabDevice" style="@style/TabButton" android:text="Device" />

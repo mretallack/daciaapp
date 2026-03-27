@@ -327,11 +327,11 @@ The NFTP implementation is split across two layers:
 
 **Native layer** (`system://yellow.nftp` module, in `liblib_nng_sdk.so`):
 - Source: `engine/mod_scripting/src/system/nftp/nftp_fd.cpp`
-- Provides: socket/fd transport, connection lifecycle, authentication
+- Provides: socket/fd transport, D-Bus-style remoting, connection lifecycle, authentication
 - Exposes to `.xs` scripts: `sendRaw`, `sendMessage`, `setHandler`, `sendMethodCall`
-- Also registers symbols: `tryAnonymous`, `identity`, `cookieSha1`
+- Also registers symbols: `tryAnonymous`, `identity`, `cookieSha1`, `serial`, `type`, `flags`, `noReply`
 - Does NOT implement the NFTP protocol commands (Init, GetFile, QueryInfo, etc.)
-- Session vtable at `0x01d79238`, post-auth vtable at `0x01d793b8`
+- The message processor (`FUN_006bf478`) is a **D-Bus message dispatcher**, not an NFTP command handler
 
 **Script layer** (`core/nftp.xs`, shared between phone and head unit):
 - Implements the actual NFTP protocol: message framing, command types, serialisation
@@ -343,6 +343,88 @@ The NFTP implementation is split across two layers:
   ```
 - The `writeValue`/`readValue` functions use `Stream(@compact)` / `Reader` for serialisation
 - QueryInfo keys (`@device`, `@brand`, `@fileMapping`) are `.xs` symbols, NOT native symbols
+
+#### Native Call Chain (from Ghidra decompilation of liblib_nng_sdk.so)
+
+Traced from the USB/fd entry point through the full connection lifecycle:
+
+```
+FUN_00683b04  "createFromFd" — Module init, registers createFromFd as .xs callable
+  │  Creates object with vtable PTR_FUN_01d7ac08
+  │  Registers symbol "createFromFd" via FUN_00af8b08
+  │  Binds FUN_006cfd58 as the implementation
+  │  Called by: .xs scripts via nftp.createFromFd(fd, handler)
+  │
+  ▼
+FUN_006ba938  "connection handler" — Called when createFromFd is invoked
+  │  Called by: FUN_006ba6e8
+  │  Extracts fd and handler args from .xs runtime
+  │  Calls FUN_0067c258() to get event loop
+  │  On failure: throws "failed to connect"
+  │  On success: allocates 0x80-byte session object
+  │  Calls FUN_006bac00 to initialise the session
+  │
+  ▼
+FUN_006bac00  "session creation" — Initialises NFTP session
+  │  Called by: FUN_006ba938
+  │  Sets vtable to PTR_FUN_01d79238 (pre-auth session)
+  │  Registers symbols: "tryAnonymous", "identity", "cookieSha1"
+  │  Iterates handler options from .xs (auth methods)
+  │  Stores fd, event loop ref, handler callback
+  │
+  ▼
+FUN_006bb5e0  "auth handler" — vtable[4] of pre-auth session (PTR_FUN_01d79238)
+  │  Handles authentication handshake
+  │  On auth failure: calls FUN_00690ec4 with "authentication failed"
+  │  On success: allocates 0x90-byte post-auth session
+  │  Sets vtable to PTR_FUN_01d793b8 (post-auth session)
+  │  Calls FUN_006be6a0 to set up message handling
+  │
+  ▼
+FUN_006be6a0  "post-auth setup" — Initialises the authenticated session
+  │  Called by: FUN_006bb5e0
+  │  Copies auth state to new session object
+  │  Sets up message read/write buffers
+  │  6101 chars decompiled — complex initialisation
+  │
+  ▼
+FUN_006bec54  ".xs method dispatcher" — vtable[5] of post-auth session
+  │  Called by: .xs scripts when they call methods on the connection object
+  │  17096 chars decompiled — the largest function in the NFTP module
+  │  Registers symbols: "sendRaw", "sendMessage", "setHandler", "sendMethodCall"
+  │  Dispatches based on which .xs method was called:
+  │    sendRaw(data)        → sends raw bytes on the wire
+  │    sendMessage(msg)     → FUN_0067ac88 (D-Bus message framing)
+  │    sendMethodCall(msg)  → FUN_0067ac88 (same, with reply flag)
+  │    setHandler(fn)       → stores .xs callback for incoming messages
+  │  References "dbus_socket_has_been_closed" error string
+  │
+  ▼
+FUN_006bf0e0  "message reader" — vtable[12] of post-auth session
+  │  Called by: FUN_006bf45c (event loop callback)
+  │  Reads data from fd into buffer
+  │  Parses D-Bus message framing (16-byte header: magic, length, serial, type)
+  │  Handles byte order (checks for 'B' = big-endian)
+  │  For each complete message: calls FUN_006bf478
+  │
+  ▼
+FUN_006bf478  "message processor" — Processes individual D-Bus messages
+  │  Called by: FUN_006bf0e0 (twice — for buffered and streaming paths)
+  │  Registers symbols: "serial", "type", "flags", "noReply"
+  │  Parses D-Bus header fields from the message
+  │  Looks up registered handler (set via setHandler from .xs)
+  │  Dispatches message to the .xs handler callback
+  │  This is where control passes from native → .xs script
+  │  The .xs handler (nftp.xs msgHandler) then parses NFTP commands
+```
+
+**Key insight**: The native module is a generic D-Bus-over-fd transport. It knows nothing about NFTP commands (Init=0, GetFile=3, QueryInfo=4, etc.). All NFTP protocol logic lives in the `.xs` scripts. The native module:
+1. Opens the fd
+2. Handles authentication (tryAnonymous/identity/cookieSha1)
+3. Frames messages using D-Bus wire format (not NFTP packet format)
+4. Dispatches received messages to the `.xs` handler callback
+
+The NFTP packet framing (4-byte header with length/continuation/transaction ID) is implemented in `core/nftp.xs`, layered on top of the D-Bus transport.
 
 **Why symbol IDs match between phone and head unit:**
 1. Both run the same `liblib_nng_sdk.so` → same 736 SDK symbols with same IDs
