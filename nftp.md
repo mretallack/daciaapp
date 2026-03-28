@@ -361,6 +361,58 @@ The counter at `symbolTable + 0xf8` likely starts at 14 (after the well-known sy
 - IDs depend on the full module load order (native init + `.xs` script parsing)
 - Both the phone app and head unit must assign the same IDs because they load the same NNG SDK + same `.xs` scripts
 
+#### Two Separate Symbol ID Spaces (from Ghidra decompilation)
+
+The symbol table has TWO independent counters, suggesting two separate ID allocation mechanisms:
+
+**Counter 1: `.xs` parser symbols** (`symbolTable + 0xf8`):
+- Used by `FUN_00af8b08` (single symbol intern, called from `.xs` parser and native lazy init)
+- Sequential, order-dependent — fragile across versions
+- Used for `@symbol` tokens encountered during `.xs` script parsing
+
+**Counter 2: Batch-allocated module symbols** (`symbolTable + 0x134`):
+- Used by `FUN_00af874c` (batch allocator, called via `ifapi_token_alloc_symbol_range`)
+- Allocates a contiguous range of IDs for an array of names
+- Called from the public C API `ifapi_token_alloc_symbol_range(count, names_array)`
+- Returns `(count << 32) | first_id` — the first ID and count of the allocated range
+- Deterministic: the caller provides a fixed array of names, always gets the same range
+
+**Decompiled `ifapi_token_alloc_symbol_range`:**
+```c
+uint64_t ifapi_token_alloc_symbol_range(uint32_t count, char** names_array) {
+    SymbolTable* table = get_global_symbol_table();
+    uint32_t first_id = table->batch_counter;  // at table + 0x134
+    table->batch_counter += count;
+    for (int i = 0; i < count; i++) {
+        // Store names[i] into table's name array at table + 0x138
+        table->names[table->name_count++] = names_array[i] ?? "<empty>";
+    }
+    return ((uint64_t)count << 32) | first_id;
+}
+```
+
+**Decompiled `FUN_00af8340` (id_to_token / reverse lookup):**
+```c
+char* id_to_token(SymbolTable* table, uint32_t id) {
+    if ((int)(id + 0xC0000000) >= 0) return "<number>";  // top 2 bits = 01
+    if (id >> 30 > 2) return "<symbol>";                  // top 2 bits = 11
+    if (id == 0) return "";
+    // Binary search in range table at table + 0x60
+    // Each range entry is 0x20 bytes: {start_id, names_ptr, count, ...}
+    // Returns names_ptr[id - start_id]
+}
+```
+
+**Symbol ID type tags** (top 2 bits of 32-bit ID):
+- `00` = regular interned symbol (from `.xs` parser or batch alloc)
+- `01` = number literal
+- `10` = (unknown)
+- `11` = special symbol
+
+**Key insight**: The batch allocator (`ifapi_token_alloc_symbol_range`) is the mechanism that ensures deterministic symbol IDs across different runtimes. External modules (like the Java SDK bindings) register their symbols in bulk with a fixed name array, getting a predictable contiguous range. The `.xs` parser's lazy intern is for internal use where order doesn't matter (both sides parse the same scripts).
+
+**Remaining question**: Which mechanism does the `.xs` runtime use for `@device`, `@brand`, etc.? If these are registered via batch alloc (from a module's symbol table), the IDs would be deterministic. If they're interned lazily during script parsing, the IDs depend on parse order — but since both sides parse the same `core/nftp.xs` and shared modules, the order would still match.
+
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
 1. Discover the IDs by brute-force scanning (in progress, range 700–1500)
 2. Intercept the official app's wire traffic to capture the actual IDs
