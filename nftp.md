@@ -549,9 +549,18 @@ Since the phone (YellowBox 1.8.13) and head unit (YellowTool 1.18.1) have differ
 versions with different built-in symbol tables, integer symbol IDs don't match.
 
 **Test result**: Sending QueryInfo with `TAG_ID_STRING` identifiers to the head unit returns
-4-byte responses (not the 12-byte "unknown" from integer IDs). This confirms the head unit
-processes string identifiers differently — but the response needs further analysis to determine
-if it's returning data or an error code.
+`status=0` (success) with empty array payload (`1f 00`). This means:
+1. String identifiers ARE parsed correctly by the head unit
+2. The QueryInfo handler IS running and returning success
+3. But the keys (`@device`, `@brand`, `@ls`, etc.) aren't registered in the head unit's lookup table
+
+The QueryInfo handler on YellowTool (head unit) expects keys to be registered by the app's
+initialization code. Since we're just sending raw NFTP requests without running the full
+YellowTool app context, the lookup table is empty.
+
+**However, this doesn't matter for our use case**: GetFile works perfectly, and `device.nng`
+contains all the device info we need (SWID, VIN, iGo version, APPCID). QueryInfo is only
+needed for dynamic queries like directory listings, which we can also do via GetFile if needed.
 
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
 1. Discover the IDs by brute-force scanning (in progress, range 700–1500)

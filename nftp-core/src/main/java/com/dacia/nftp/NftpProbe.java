@@ -89,16 +89,44 @@ public class NftpProbe {
             for (String key : queryKeys) {
                 byte[] qBody = buildQueryInfo(key);
                 byte[] qResp = conn.sendAndReceive(qBody);
-                boolean isUnknown = qResp.length == 12;
-                log.log("@" + key + ": " +
-                    (isUnknown ? "unknown (" + qResp.length + "b)" : qResp.length + "b " + hex(qResp, 64)));
+                int status = qResp.length > 0 ? (qResp[0] & 0xFF) : -1;
+                String detail;
+                if (status == 0 && qResp.length > 1) {
+                    byte[] payload = new byte[qResp.length - 1];
+                    System.arraycopy(qResp, 1, payload, 0, payload.length);
+                    detail = "OK " + payload.length + "b payload=" + hex(payload, 64);
+                    // Try to interpret as UTF-8 string if it looks like text
+                    try {
+                        String txt = new String(payload, "UTF-8");
+                        if (txt.chars().allMatch(c -> c >= 0x20 && c < 0x7F))
+                            detail += " text=\"" + txt + "\"";
+                    } catch (Exception e) {}
+                } else {
+                    detail = "status=" + status + " len=" + qResp.length + " raw=" + hex(qResp, 32);
+                }
+                log.log("@" + key + ": " + detail);
             }
 
-            // Also try multi-key query like the real app does: queryInfo(@device)
+            // Multi-key query
             log.log("=== Multi-key: device,brand ===");
             byte[] multiBody = buildQueryInfo("device", "brand");
             byte[] multiResp = conn.sendAndReceive(multiBody);
-            log.log("Response: " + multiResp.length + "b " + hex(multiResp, 128));
+            int mStatus = multiResp.length > 0 ? (multiResp[0] & 0xFF) : -1;
+            log.log("status=" + mStatus + " len=" + multiResp.length + " raw=" + hex(multiResp, 128));
+
+            // Try @ls query with path — this is how queryFiles works
+            log.log("=== QueryInfo: @ls / ===");
+            byte[] lsBody = buildLsQuery("/");
+            byte[] lsResp = conn.sendAndReceive(lsBody);
+            int lsStatus = lsResp.length > 0 ? (lsResp[0] & 0xFF) : -1;
+            log.log("status=" + lsStatus + " len=" + lsResp.length + " raw=" + hex(lsResp, 256));
+
+            // Try @device query as the real app does
+            log.log("=== QueryInfo: @device (single symbol) ===");
+            byte[] devBody = buildQueryInfoSingleSymbol("device");
+            byte[] devResp = conn.sendAndReceive(devBody);
+            int devStatus = devResp.length > 0 ? (devResp[0] & 0xFF) : -1;
+            log.log("status=" + devStatus + " len=" + devResp.length + " raw=" + hex(devResp, 256));
 
             log.log("Probe complete");
 
@@ -185,6 +213,42 @@ public class NftpProbe {
             items[i] = "@" + keys[i];
         }
         ser.writeTuple(items);
+        byte[] payload = ser.toBytes();
+        buf.write(payload, 0, payload.length);
+        return buf.toByteArray();
+    }
+
+    /** Build QueryInfo for @ls query: (@ls, path, #{fields: (@name, @size)}) */
+    static byte[] buildLsQuery(String path) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x04); // QueryInfo command
+        NngSerializer ser = new NngSerializer();
+        // Tuple: (@ls, path, #{fields: (@name, @size)})
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(3); // 3 items
+        ser.writeIdentifierString("ls");
+        ser.writeString(path);
+        // Record: #{fields: (@name, @size)}
+        ser.writeTag(NngSerializer.TAG_DICT_VLI_LEN);
+        ser.writeVlu(1); // 1 key-value pair
+        ser.writeIdentifierString("fields");
+        // Tuple of field names
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(2);
+        ser.writeIdentifierString("name");
+        ser.writeIdentifierString("size");
+        byte[] payload = ser.toBytes();
+        buf.write(payload, 0, payload.length);
+        return buf.toByteArray();
+    }
+
+    /** Build QueryInfo with single symbol identifier */
+    static byte[] buildQueryInfoSingleSymbol(String name) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x04); // QueryInfo command
+        NngSerializer ser = new NngSerializer();
+        // Just the identifier, not wrapped in tuple
+        ser.writeIdentifierString(name);
         byte[] payload = ser.toBytes();
         buf.write(payload, 0, payload.length);
         return buf.toByteArray();
