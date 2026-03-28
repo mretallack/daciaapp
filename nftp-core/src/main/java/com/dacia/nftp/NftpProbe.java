@@ -128,6 +128,36 @@ public class NftpProbe {
             int devStatus = devResp.length > 0 ? (devResp[0] & 0xFF) : -1;
             log.log("status=" + devStatus + " len=" + devResp.length + " raw=" + hex(devResp, 256));
 
+            // queryFiles sends: queryInfo(@ls, path, #{fields})
+            // Let's try listing "content" and "license" directories
+            log.log("=== queryFiles: content ===");
+            byte[] contentLs = buildQueryFiles("content");
+            log.log("packet: " + hex(contentLs));
+            byte[] contentResp = conn.sendAndReceive(contentLs);
+            int contentStatus = contentResp.length > 0 ? (contentResp[0] & 0xFF) : -1;
+            log.log("status=" + contentStatus + " len=" + contentResp.length);
+            if (contentResp.length > 1) {
+                log.log("raw: " + hex(contentResp, 512));
+            }
+
+            log.log("=== queryFiles: license ===");
+            byte[] licenseLs = buildQueryFiles("license");
+            byte[] licenseResp = conn.sendAndReceive(licenseLs);
+            int licenseStatus = licenseResp.length > 0 ? (licenseResp[0] & 0xFF) : -1;
+            log.log("status=" + licenseStatus + " len=" + licenseResp.length);
+            if (licenseResp.length > 1) {
+                log.log("raw: " + hex(licenseResp, 512));
+            }
+
+            log.log("=== queryFiles: / (root) ===");
+            byte[] rootLs = buildQueryFiles("/");
+            byte[] rootResp = conn.sendAndReceive(rootLs);
+            int rootStatus = rootResp.length > 0 ? (rootResp[0] & 0xFF) : -1;
+            log.log("status=" + rootStatus + " len=" + rootResp.length);
+            if (rootResp.length > 1) {
+                log.log("raw: " + hex(rootResp, 512));
+            }
+
             log.log("Probe complete");
 
             return Result.success(serverName, serverVersion, fileData);
@@ -249,6 +279,30 @@ public class NftpProbe {
         NngSerializer ser = new NngSerializer();
         // Just the identifier, not wrapped in tuple
         ser.writeIdentifierString(name);
+        byte[] payload = ser.toBytes();
+        buf.write(payload, 0, payload.length);
+        return buf.toByteArray();
+    }
+
+    /** Build queryFiles query: queryInfo(@ls, path, #{fields: (@name, @size)}) */
+    static byte[] buildQueryFiles(String path) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x04); // QueryInfo command
+        NngSerializer ser = new NngSerializer();
+        // Outer tuple: (@ls, path, #{fields})
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(3); // 3 items
+        ser.writeIdentifierString("ls");  // @ls
+        ser.writeString(path);             // path string
+        // Record: #{fields: (@name, @size)}
+        ser.writeTag(NngSerializer.TAG_DICT_VLI_LEN);
+        ser.writeVlu(1); // 1 key-value pair
+        ser.writeIdentifierString("fields");
+        // Tuple of field identifiers
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(2);
+        ser.writeIdentifierString("name");
+        ser.writeIdentifierString("size");
         byte[] payload = ser.toBytes();
         buf.write(payload, 0, payload.length);
         return buf.toByteArray();

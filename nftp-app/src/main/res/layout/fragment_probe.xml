@@ -42,6 +42,13 @@
         android:text="Probe NNG SDK Symbols"
         android:layout_marginTop="8dp" />
 
+    <Button
+        android:id="@+id/btnNngEngine"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start NNG Engine"
+        android:layout_marginTop="8dp" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"

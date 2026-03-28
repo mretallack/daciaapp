@@ -140,6 +140,31 @@ public class MainActivity extends Activity {
                 }
             }).start();
         });
+
+        probeView.findViewById(R.id.btnNngEngine).setOnClickListener(v -> {
+            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
+            txtResult.setText("Starting NNG Engine...\n");
+            new Thread(() -> {
+                try {
+                    NngEngine engine = NngEngine.getInstance();
+                    String result = engine.init(this);
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("Result: ").append(result).append("\n");
+                    sb.append("Initialized: ").append(engine.isInitialized()).append("\n");
+                    if (engine.getLastError() != null) {
+                        sb.append("Last error: ").append(engine.getLastError()).append("\n");
+                    }
+                    String msg = sb.toString();
+                    runOnUiThread(() -> txtResult.setText(msg));
+                    log(msg);
+                } catch (Throwable t) {
+                    String err = "NNG Engine error: " + t.getClass().getSimpleName() + ": " + t.getMessage();
+                    runOnUiThread(() -> txtResult.setText(err));
+                    log(err);
+                    t.printStackTrace();
+                }
+            }).start();
+        });
     }
 
     private void updateProbeStatus(String status) {
