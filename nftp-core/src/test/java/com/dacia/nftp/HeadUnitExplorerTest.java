@@ -3,11 +3,12 @@ package com.dacia.nftp;
 import org.junit.Test;
 import java.io.*;
 import java.util.List;
+import java.util.Map;
 import static org.junit.Assert.*;
 
 public class HeadUnitExplorerTest {
 
-    /** Fake server that handles Init, GetFile, and CheckSum. */
+    /** Fake server that handles Init, GetFile, CheckSum, and QueryInfo. */
     static class FakeServer implements Runnable {
         final InputStream in;
         final OutputStream out;
@@ -27,6 +28,7 @@ public class HeadUnitExplorerTest {
                     switch (cmd) {
                         case 0x00: handleInit(req.id); break;
                         case 0x03: handleGetFile(req.id, body); break;
+                        case 0x04: handleQueryInfo(req.id, body); break;
                         case 0x05: handleCheckSum(req.id, body); break;
                         default: sendResponse(req.id, new byte[]{0x7F}); break;
                     }
@@ -43,7 +45,6 @@ public class HeadUnitExplorerTest {
         }
 
         void handleGetFile(int id, byte[] body) throws IOException {
-            // Extract path from body[1..] up to null
             int end = 1;
             while (end < body.length && body[end] != 0) end++;
             String path = new String(body, 1, end - 1, "ASCII");
@@ -56,9 +57,90 @@ public class HeadUnitExplorerTest {
                 r.write(0x00);
                 r.write(new byte[]{0x01, 0x02, 0x03, 0x04});
             } else {
-                r.write(0x01); // Failed
+                r.write(0x01);
                 r.write("EACCESS".getBytes());
             }
+            sendResponse(id, r.toByteArray());
+        }
+
+        void handleQueryInfo(int id, byte[] body) throws IOException {
+            // Parse the query to figure out what's being asked
+            NngDeserializer des = new NngDeserializer(body, 1);
+            Object query = des.readValue();
+
+            ByteArrayOutputStream r = new ByteArrayOutputStream();
+            r.write(0x00); // success
+
+            // Check if it's an @ls query (tuple starting with @ls)
+            if (query instanceof Object[]) {
+                Object[] tuple = (Object[]) query;
+                if (tuple.length >= 1 && "@ls".equals(tuple[0])) {
+                    // Return a fake @ls response: (name, size, isFile, child1, child2)
+                    NngSerializer ser = new NngSerializer();
+                    // Root tuple: ("root", 0, false, ("file1.txt", 100, true), ("subdir", 0, false))
+                    ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+                    ser.writeVlu(5); // name, size, isFile, child1, child2
+                    ser.writeString("root");
+                    ser.writeTag(NngSerializer.TAG_INT32_VLI); ser.writeVli(0);
+                    ser.writeTag(NngSerializer.TAG_INT32_VLI); ser.writeVli(0); // isFile=false
+                    // child1: file
+                    ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN); ser.writeVlu(3);
+                    ser.writeString("file1.txt");
+                    ser.writeTag(NngSerializer.TAG_INT32_VLI); ser.writeVli(100);
+                    ser.writeTag(NngSerializer.TAG_INT32_VLI); ser.writeVli(1); // isFile=true
+                    // child2: dir
+                    ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN); ser.writeVlu(3);
+                    ser.writeString("subdir");
+                    ser.writeTag(NngSerializer.TAG_INT32_VLI); ser.writeVli(0);
+                    ser.writeTag(NngSerializer.TAG_INT32_VLI); ser.writeVli(0); // isFile=false
+                    r.write(ser.toBytes());
+                    sendResponse(id, r.toByteArray());
+                    return;
+                }
+
+                // Multi-key query — check for known keys
+                boolean hasDevice = false, hasBrand = false;
+                for (Object item : tuple) {
+                    String s = String.valueOf(item);
+                    if ("@device".equals(s)) hasDevice = true;
+                    if ("@brand".equals(s)) hasBrand = true;
+                }
+                if (hasDevice && hasBrand) {
+                    NngSerializer ser = new NngSerializer();
+                    ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN); ser.writeVlu(2);
+                    // @device dict
+                    ser.writeDict("@swid", "TEST-SWID", "@vin", "TEST-VIN",
+                                  "@igoVersion", "1.2.3", "@appcid", "TEST-APP");
+                    // @brand dict
+                    ser.writeDict("@agentBrand", "TestBrand", "@modelName", "TestModel",
+                                  "@brandName", "TestBrandName");
+                    r.write(ser.toBytes());
+                    sendResponse(id, r.toByteArray());
+                    return;
+                }
+
+                // Single key queries
+                for (Object item : tuple) {
+                    String s = String.valueOf(item);
+                    if ("@fileMapping".equals(s)) {
+                        NngSerializer ser = new NngSerializer();
+                        ser.writeDict("device.nng", "license/", ".fbl", "content/map/");
+                        r.write(ser.toBytes());
+                        sendResponse(id, r.toByteArray());
+                        return;
+                    }
+                    if ("@diskInfo".equals(s)) {
+                        NngSerializer ser = new NngSerializer();
+                        ser.writeDict("@available", 4000000000L, "@size", 8000000000L);
+                        r.write(ser.toBytes());
+                        sendResponse(id, r.toByteArray());
+                        return;
+                    }
+                }
+            }
+
+            // Unknown query — return undef
+            r.write(0x00); // TAG_UNDEF
             sendResponse(id, r.toByteArray());
         }
 
@@ -66,7 +148,6 @@ public class HeadUnitExplorerTest {
             int method = body[1] & 0xFF;
             ByteArrayOutputStream r = new ByteArrayOutputStream();
             r.write(0x00);
-            // Fake hash: 16 bytes for MD5, 20 for SHA1
             int len = method == 0 ? 16 : 20;
             for (int i = 0; i < len; i++) r.write(0xAA + i);
             sendResponse(id, r.toByteArray());
@@ -102,6 +183,54 @@ public class HeadUnitExplorerTest {
     }
 
     @Test
+    public void testDeviceInfo() throws Exception {
+        HeadUnitExplorer explorer = connectToFake();
+        HeadUnitExplorer.DeviceInfo info = explorer.getDeviceInfo();
+        assertNotNull(info);
+        assertEquals("TEST-SWID", info.swid);
+        assertEquals("TEST-VIN", info.vin);
+        assertEquals("1.2.3", info.igoVersion);
+        assertEquals("TEST-APP", info.appcid);
+        assertEquals("TestBrand", info.agentBrand);
+        assertEquals("TestModel", info.modelName);
+    }
+
+    @Test
+    public void testDiskInfo() throws Exception {
+        HeadUnitExplorer explorer = connectToFake();
+        HeadUnitExplorer.DiskInfo di = explorer.getDiskInfo();
+        assertNotNull(di);
+        assertEquals(4000000000L, di.available);
+        assertEquals(8000000000L, di.size);
+    }
+
+    @Test
+    public void testFileMapping() throws Exception {
+        HeadUnitExplorer explorer = connectToFake();
+        Map<String, String> fm = explorer.getFileMapping();
+        assertNotNull(fm);
+        assertEquals("license/", fm.get("device.nng"));
+        assertEquals("content/map/", fm.get(".fbl"));
+    }
+
+    @Test
+    public void testListDirectory() throws Exception {
+        HeadUnitExplorer explorer = connectToFake();
+        List<HeadUnitExplorer.FileEntry> entries = explorer.listDirectory("/");
+        assertNotNull(entries);
+        assertEquals(2, entries.size());
+        // file1.txt
+        HeadUnitExplorer.FileEntry f = entries.get(0);
+        assertEquals("file1.txt", f.name);
+        assertFalse(f.isDir);
+        assertEquals(100, f.size);
+        // subdir
+        HeadUnitExplorer.FileEntry d = entries.get(1);
+        assertEquals("subdir", d.name);
+        assertTrue(d.isDir);
+    }
+
+    @Test
     public void testReadFile() throws Exception {
         HeadUnitExplorer explorer = connectToFake();
         byte[] data = explorer.readFile("license/test.lyc");
@@ -124,7 +253,7 @@ public class HeadUnitExplorerTest {
         HeadUnitExplorer explorer = connectToFake();
         String md5 = explorer.getChecksum("license/device.nng", 0);
         assertNotNull(md5);
-        assertEquals(32, md5.length()); // 16 bytes = 32 hex chars
+        assertEquals(32, md5.length());
     }
 
     @Test

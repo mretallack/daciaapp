@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.dacia.nftp.HeadUnitExplorer;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ExplorerAdapter extends RecyclerView.Adapter<ExplorerAdapter.ViewHolder> {
@@ -17,20 +18,26 @@ public class ExplorerAdapter extends RecyclerView.Adapter<ExplorerAdapter.ViewHo
         void onClick(HeadUnitExplorer.FileEntry entry);
     }
 
-    private final List<HeadUnitExplorer.FileEntry> entries;
+    private List<HeadUnitExplorer.FileEntry> entries;
     private final OnItemClick listener;
 
     public ExplorerAdapter(List<HeadUnitExplorer.FileEntry> entries, OnItemClick listener) {
-        this.entries = entries;
+        this.entries = new ArrayList<>(entries);
         this.listener = listener;
     }
 
+    public void updateEntries(List<HeadUnitExplorer.FileEntry> newEntries) {
+        this.entries = new ArrayList<>(newEntries);
+        notifyDataSetChanged();
+    }
+
     static class ViewHolder extends RecyclerView.ViewHolder {
-        TextView txtIcon, txtName;
+        TextView txtIcon, txtName, txtSize;
         ViewHolder(View v) {
             super(v);
             txtIcon = v.findViewById(R.id.txtIcon);
             txtName = v.findViewById(R.id.txtName);
+            txtSize = v.findViewById(R.id.txtSize);
         }
     }
 
@@ -45,9 +52,21 @@ public class ExplorerAdapter extends RecyclerView.Adapter<ExplorerAdapter.ViewHo
         HeadUnitExplorer.FileEntry entry = entries.get(position);
         holder.txtIcon.setText(entry.isDir ? "📁" : "📄");
         holder.txtName.setText(entry.name);
+        if (entry.isDir || entry.size == 0) {
+            holder.txtSize.setText("");
+        } else {
+            holder.txtSize.setText(formatSize(entry.size));
+        }
         holder.itemView.setOnClickListener(v -> listener.onClick(entry));
     }
 
     @Override
     public int getItemCount() { return entries.size(); }
+
+    private static String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
+    }
 }

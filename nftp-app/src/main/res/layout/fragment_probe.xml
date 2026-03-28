@@ -34,46 +34,4 @@
         android:textSize="14sp"
         android:paddingTop="8dp"
         android:paddingBottom="8dp" />
-
-    <Button
-        android:id="@+id/btnNngProbe"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Probe NNG SDK Symbols"
-        android:layout_marginTop="8dp" />
-
-    <Button
-        android:id="@+id/btnNngEngine"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Start NNG Engine"
-        android:layout_marginTop="8dp" />
-
-    <Button
-        android:id="@+id/btnConnectEmulator"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="NNG TCP Connect"
-        android:layout_marginTop="8dp" />
-
-    <Button
-        android:id="@+id/btnQueryDisk"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="NNG Query DiskInfo"
-        android:layout_marginTop="8dp" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp">
-
-        <TextView
-            android:id="@+id/txtNngResult"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:textSize="11sp" />
-    </ScrollView>
 </LinearLayout>

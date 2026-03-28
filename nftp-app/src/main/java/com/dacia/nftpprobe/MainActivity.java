@@ -1,6 +1,7 @@
 package com.dacia.nftpprobe;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -14,11 +15,19 @@ import android.os.ParcelFileDescriptor;
 import android.view.View;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 
+import com.dacia.nftp.HeadUnitExplorer;
+import com.dacia.nftp.HexDump;
 import com.dacia.nftp.NftpProbe;
 
 import java.io.FileInputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity {
 
@@ -26,14 +35,19 @@ public class MainActivity extends Activity {
     private PendingIntent permissionIntent;
     private volatile boolean probeRunning = false;
 
-    // Shared state
-    private NftpProbe.Result lastResult;
+    // Shared connection
+    private HeadUnitExplorer explorer;
     private final StringBuilder logBuffer = new StringBuilder();
 
-    // Fragments (manual view switching)
+    // Views
     private View probeView, deviceView, explorerView, logView;
     private Button tabProbe, tabDevice, tabExplorer, tabLog;
     private Button activeTab;
+
+    // Explorer state
+    private ExplorerAdapter explorerAdapter;
+    private String currentPath = "/";
+    private final List<String> pathStack = new ArrayList<>();
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -48,6 +62,8 @@ public class MainActivity extends Activity {
                 }
             } else if (UsbManager.ACTION_USB_ACCESSORY_DETACHED.equals(intent.getAction())) {
                 log("USB accessory detached");
+                explorer = null;
+                updateAllTabs();
             }
         }
     };
@@ -75,8 +91,8 @@ public class MainActivity extends Activity {
         frame.addView(logView);
 
         tabProbe.setOnClickListener(v -> showTab(tabProbe, probeView));
-        tabDevice.setOnClickListener(v -> showTab(tabDevice, deviceView));
-        tabExplorer.setOnClickListener(v -> { showTab(tabExplorer, explorerView); setupExplorer(); });
+        tabDevice.setOnClickListener(v -> { showTab(tabDevice, deviceView); updateDeviceTab(); });
+        tabExplorer.setOnClickListener(v -> { showTab(tabExplorer, explorerView); refreshExplorer(); });
         tabLog.setOnClickListener(v -> { showTab(tabLog, logView); refreshLog(); });
 
         setupProbeTab();
@@ -98,115 +114,6 @@ public class MainActivity extends Activity {
         }
 
         handleIntent(getIntent());
-
-        // Auto-start if launched with --ez auto_test true
-        if (getIntent().getBooleanExtra("auto_test", false)) {
-            new Thread(() -> {
-                try {
-                    NngEngine engine = NngEngine.getInstance();
-                    String result = engine.init(this);
-                    Log.i("NftpProbe", "Auto-init: " + result);
-                    Log.i("NftpProbe", "Initialized: " + engine.isInitialized());
-
-                    if (!engine.isInitialized()) return;
-
-                    com.nng.uie.api.androidConnection aconn = com.nng.uie.api.androidConnection.INSTANCE;
-
-                    // Uses real NNG native modules via asyncEval:
-                    // - system://socket for TCP
-                    // - system://serialization for Stream(@compact) / Reader
-                    // - system://math for bitwise ops (|, &, << not supported as operators)
-                    // - system://core.types for DataWriter/DataReader/ArrayBuffer
-                    // Note: core/nftp.xs can't be imported from asyncEval, so we do
-                    // manual NFTP packet framing but use REAL NNG serialization.
-
-                    // Helper: build the common init+connect preamble
-                    String preamble =
-                        "const sock = System.import('system://socket');" +
-                        "const ct = System.import('system://core.types');" +
-                        "const math = System.import('system://math');" +
-                        "const ser = System.import('system://serialization');" +
-                        "const s = await sock.connect(#{host:'10.0.0.78', port:9876});" +
-                        "const initStr = 'YellowBox/1.8.13+e14eabb8';" +
-                        "const bl = 1+1+initStr.length+1; const pl = 4+bl;" +
-                        "const ib = new ct.ArrayBuffer(pl); const iw = ct.DataWriter(ib);" +
-                        "iw.u8(math.and(pl,0xFF));iw.u8(math.and(math.shr(pl,8),0x7F));" +
-                        "iw.u8(1);iw.u8(0);iw.u8(0);iw.u8(1);iw.string(initStr);" +
-                        "await s.write(ib);";
-
-                    // Helper: send QueryInfo and parse response
-                    String sendQuery =
-                        "const qbl = 1+p.byteLength; const qpl = 4+qbl;" +
-                        "const qb = new ct.ArrayBuffer(qpl); const qw = ct.DataWriter(qb);" +
-                        "qw.u8(math.and(qpl,0xFF));qw.u8(math.and(math.shr(qpl,8),0x7F));" +
-                        "qw.u8(2);qw.u8(0);qw.u8(4);qw.writeBytes(p);" +
-                        "await s.write(qb); const qr = await s.read(4096);" +
-                        "const rd = ct.DataReader(qr);" +
-                        "rd.u8();rd.u8();rd.u8();rd.u8();" +
-                        "const qs = rd.u8();";
-
-                    String parseResponse =
-                        "const d = qr.slice(5); const rr = ser.Reader(d); const v = rr.read();";
-
-                    // Test 1: Init handshake
-                    String initScript = preamble +
-                        "const resp = await s.read(1024);" +
-                        "const r = ct.DataReader(resp);" +
-                        "r.u8();r.u8();r.u8();r.u8();" + // skip header
-                        "const status = r.u8();" +
-                        "const ver = r.u8();" +
-                        "const name = r.string();" +
-                        "SysConfig.set('probe','init', name + ' v' + ver + ' status=' + status);" +
-                        "s.close(); 'init done'";
-                    Object r1 = engine.evalSync(aconn, initScript, 15000);
-                    Log.i("NftpProbe", "Init: " + engine.formatResult(r1));
-                    Log.i("NftpProbe", "RESULT init = " + engine.formatResult(
-                        engine.evalSync(aconn, "SysConfig.get('probe','init','')", 3000)));
-
-                    // Test 2: QueryInfo @fileMapping (real NNG serialization)
-                    String fmScript = preamble + 
-                        "const resp = await s.read(1024);" +
-                        "SysConfig.set('probe','init_resp','got '+resp.byteLength+' bytes');" +
-                        "s.close(); 'fm done'";
-                    Object r2 = engine.evalSync(aconn, fmScript, 15000);
-                    Log.i("NftpProbe", "FM: " + engine.formatResult(r2));
-                    Log.i("NftpProbe", "RESULT qi_fm = " + engine.formatResult(
-                        engine.evalSync(aconn, "SysConfig.get('probe','qi_fm','')", 3000)));
-                    Log.i("NftpProbe", "RESULT qi_fm_status = " + engine.formatResult(
-                        engine.evalSync(aconn, "SysConfig.get('probe','qi_fm_status','')", 3000)));
-
-                    // Test 3: QueryInfo @device, @brand
-                    String devScript = preamble + "await s.read(1024);" +
-                        "const st = ser.Stream(@compact); st.add((@device, @brand));" +
-                        "const p = st.transfer();" + sendQuery +
-                        "if(qs==0){" + parseResponse +
-                        "SysConfig.set('probe','qi_dev','status='+qs+' val='+v);}" +
-                        "s.close(); 'dev done'";
-                    Object r3 = engine.evalSync(aconn, devScript, 15000);
-                    Log.i("NftpProbe", "Dev: " + engine.formatResult(r3));
-                    Log.i("NftpProbe", "RESULT qi_dev = " + engine.formatResult(
-                        engine.evalSync(aconn, "SysConfig.get('probe','qi_dev','')", 3000)));
-
-                    // Test 4: @ls directory listing
-                    String lsScript = preamble + "await s.read(1024);" +
-                        "const st = ser.Stream(@compact);" +
-                        "st.add((@ls, 'content', #{fields: (@name, @size)}));" +
-                        "const p = st.transfer();" + sendQuery +
-                        "if(qs==0){" + parseResponse +
-                        "SysConfig.set('probe','qi_ls','status='+qs+' val='+v);}" +
-                        "s.close(); 'ls done'";
-                    Object r4 = engine.evalSync(aconn, lsScript, 15000);
-                    Log.i("NftpProbe", "LS: " + engine.formatResult(r4));
-                    Log.i("NftpProbe", "RESULT qi_ls = " + engine.formatResult(
-                        engine.evalSync(aconn, "SysConfig.get('probe','qi_ls','')", 3000)));
-
-                    Log.i("NftpProbe", "=== ALL REAL-CODE TESTS COMPLETE ===");
-
-                } catch (Throwable t) {
-                    Log.e("NftpProbe", "Auto-test error", t);
-                }
-            }).start();
-        }
     }
 
     private void showTab(Button tab, View view) {
@@ -224,212 +131,219 @@ public class MainActivity extends Activity {
         activeTab = tab;
     }
 
-    // --- Probe Tab ---
+    // ---------------------------------------------------------------
+    // Probe Tab
+    // ---------------------------------------------------------------
 
     private void setupProbeTab() {
         probeView.findViewById(R.id.btnConnect).setOnClickListener(v -> {
-            log("Connect button clicked");
-            android.widget.EditText editHost = probeView.findViewById(R.id.editHost);
+            EditText editHost = probeView.findViewById(R.id.editHost);
             String host = editHost.getText().toString().trim();
-            log("Host: '" + host + "'");
-            if (!host.isEmpty()) {
-                log("Calling runProbeOverTcp...");
-                runProbeOverTcp(host, 9876);
-            } else {
-                log("Host is empty!");
-            }
-        });
-
-        probeView.findViewById(R.id.btnNngProbe).setOnClickListener(v -> {
-            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
-            txtResult.setText("Loading NNG SDK...\n");
-            new Thread(() -> {
-                try {
-                    // Use app's data dir as xs root
-                    String root = getFilesDir().getAbsolutePath();
-                    String result = NngProbe.probeSymbols(root);
-                    runOnUiThread(() -> txtResult.setText(result));
-                    log(result);
-                } catch (Throwable t) {
-                    String err = "NNG probe error: " + t.getClass().getSimpleName() + ": " + t.getMessage();
-                    runOnUiThread(() -> txtResult.setText(err));
-                    log(err);
-                }
-            }).start();
-        });
-
-        probeView.findViewById(R.id.btnNngEngine).setOnClickListener(v -> {
-            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
-            txtResult.setText("Starting NNG Engine...\n");
-            new Thread(() -> {
-                try {
-                    NngEngine engine = NngEngine.getInstance();
-                    String result = engine.init(this);
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("Result: ").append(result).append("\n");
-                    sb.append("Initialized: ").append(engine.isInitialized()).append("\n");
-                    if (engine.getLastError() != null) {
-                        sb.append("Last error: ").append(engine.getLastError()).append("\n");
-                    }
-                    String msg = sb.toString();
-                    runOnUiThread(() -> txtResult.setText(msg));
-                    log(msg);
-                } catch (Throwable t) {
-                    String err = "NNG Engine error: " + t.getClass().getSimpleName() + ": " + t.getMessage();
-                    runOnUiThread(() -> txtResult.setText(err));
-                    log(err);
-                    t.printStackTrace();
-                }
-            }).start();
-        });
-
-        probeView.findViewById(R.id.btnConnectEmulator).setOnClickListener(v -> {
-            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
-            android.widget.EditText editHost = probeView.findViewById(R.id.editHost);
-            String host = editHost.getText().toString().trim();
-            if (host.isEmpty()) host = "10.0.0.78";
-            final String finalHost = host;
-            
-            txtResult.setText("NNG TCP connecting to " + host + ":9876...\n");
-            new Thread(() -> {
-                try {
-                    NngEngine engine = NngEngine.getInstance();
-                    if (!engine.isInitialized()) {
-                        runOnUiThread(() -> txtResult.setText("Engine not initialized. Start it first."));
-                        return;
-                    }
-                    String result = engine.connectToEmulatorNng(finalHost, 9876);
-                    runOnUiThread(() -> txtResult.setText(result));
-                    log(result);
-                } catch (Throwable t) {
-                    String err = "Error: " + t.getClass().getSimpleName() + ": " + t.getMessage();
-                    runOnUiThread(() -> txtResult.setText(err));
-                    log(err);
-                }
-            }).start();
-        });
-
-        probeView.findViewById(R.id.btnQueryDisk).setOnClickListener(v -> {
-            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
-            txtResult.setText("Querying disk info via NNG...\n");
-            new Thread(() -> {
-                try {
-                    NngEngine engine = NngEngine.getInstance();
-                    if (!engine.isInitialized()) {
-                        runOnUiThread(() -> txtResult.setText("Engine not initialized."));
-                        return;
-                    }
-                    String result = engine.queryDiskInfo();
-                    runOnUiThread(() -> txtResult.setText(result));
-                    log(result);
-                } catch (Throwable t) {
-                    String err = "Error: " + t.getMessage();
-                    runOnUiThread(() -> txtResult.setText(err));
-                }
-            }).start();
+            if (!host.isEmpty()) runProbeOverTcp(host, 9876);
         });
     }
 
     private void updateProbeStatus(String status) {
         runOnUiThread(() -> {
-            android.widget.TextView txt = probeView.findViewById(R.id.txtStatus);
+            TextView txt = probeView.findViewById(R.id.txtStatus);
             txt.setText(status);
         });
     }
 
+    // ---------------------------------------------------------------
+    // Device Tab
+    // ---------------------------------------------------------------
+
     private void updateDeviceTab() {
         runOnUiThread(() -> {
-            android.widget.TextView txt = deviceView.findViewById(R.id.txtDeviceStatus);
-            android.widget.LinearLayout layout = deviceView.findViewById(R.id.deviceInfoLayout);
-
-            if (lastResult == null || !lastResult.isSuccess()) {
-                txt.setText("Not connected");
-                return;
-            }
-            txt.setText("Connected: " + lastResult.serverName + " v" + lastResult.serverVersion);
+            TextView txt = deviceView.findViewById(R.id.txtDeviceStatus);
+            LinearLayout layout = deviceView.findViewById(R.id.deviceInfoLayout);
 
             // Remove old info rows (keep status text)
             while (layout.getChildCount() > 1) layout.removeViewAt(1);
 
-            addInfoRow(layout, "Server", lastResult.serverName);
-            addInfoRow(layout, "NFTP Version", String.valueOf(lastResult.serverVersion));
-            if (lastResult.deviceNng != null) {
-                addInfoRow(layout, "device.nng size", lastResult.deviceNng.length + " bytes");
-                addInfoRow(layout, "device.nng hex", com.dacia.nftp.NftpProbe.hex(lastResult.deviceNng, 64));
+            if (explorer == null || !explorer.isConnected()) {
+                txt.setText("Not connected");
+                return;
+            }
+
+            txt.setText("Connected: " + explorer.getServerName() + " v" + explorer.getServerVersion());
+
+            // Device info
+            HeadUnitExplorer.DeviceInfo info = explorer.getDeviceInfo();
+            if (info != null) {
+                if (info.swid != null) addInfoRow(layout, "SWID", info.swid);
+                if (info.vin != null) addInfoRow(layout, "VIN", info.vin);
+                if (info.igoVersion != null) addInfoRow(layout, "iGo Version", info.igoVersion);
+                if (info.appcid != null) addInfoRow(layout, "APPCID", info.appcid);
+                if (info.agentBrand != null) addInfoRow(layout, "Brand", info.agentBrand);
+                if (info.modelName != null) addInfoRow(layout, "Model", info.modelName);
+                if (info.brandName != null) addInfoRow(layout, "Brand Name", info.brandName);
+            }
+
+            // Disk info
+            HeadUnitExplorer.DiskInfo di = explorer.getDiskInfo();
+            if (di != null && di.size > 0) {
+                String total = formatSize(di.size);
+                String avail = formatSize(di.available);
+                long pct = 100 - (di.available * 100 / di.size);
+                addInfoRow(layout, "Disk", avail + " free of " + total + " (" + pct + "% used)");
+            } else {
+                addInfoRow(layout, "Disk", "unavailable");
+            }
+
+            // device.nng fallback
+            if (info == null && explorer.getDeviceNng() != null) {
+                addInfoRow(layout, "device.nng", explorer.getDeviceNng().length + " bytes");
+                addInfoRow(layout, "Hex", NftpProbe.hex(explorer.getDeviceNng(), 64));
             }
         });
     }
 
-    private void addInfoRow(android.widget.LinearLayout layout, String label, String value) {
-        android.widget.TextView tv = new android.widget.TextView(this);
+    private void addInfoRow(LinearLayout layout, String label, String value) {
+        TextView tv = new TextView(this);
         tv.setText(label + ": " + value);
         tv.setTextSize(13);
         tv.setPadding(0, 4, 0, 4);
         layout.addView(tv);
     }
 
-    // --- Explorer Tab ---
+    // ---------------------------------------------------------------
+    // Explorer Tab
+    // ---------------------------------------------------------------
 
     private void setupExplorer() {
         androidx.recyclerview.widget.RecyclerView rv = explorerView.findViewById(R.id.recyclerFiles);
         rv.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
-        java.util.List<com.dacia.nftp.HeadUnitExplorer.FileEntry> entries = com.dacia.nftp.HeadUnitExplorer.getDirectoryTree();
-        rv.setAdapter(new ExplorerAdapter(entries, entry -> {
-            log("Selected: " + entry.path + (entry.isDir ? " (dir)" : " (file)"));
-            if (!entry.isDir) {
-                showFileDetail(entry);
-            }
-        }));
+        List<HeadUnitExplorer.FileEntry> entries = HeadUnitExplorer.getDirectoryTree();
+        explorerAdapter = new ExplorerAdapter(entries, this::onExplorerItemClick);
+        rv.setAdapter(explorerAdapter);
     }
 
-    private void showFileDetail(com.dacia.nftp.HeadUnitExplorer.FileEntry entry) {
+    private void refreshExplorer() {
+        runOnUiThread(() -> {
+            TextView txtPath = explorerView.findViewById(R.id.txtPath);
+            txtPath.setText(currentPath);
+        });
+        if (explorer == null || !explorer.isConnected()) {
+            explorerAdapter.updateEntries(HeadUnitExplorer.getDirectoryTree());
+            return;
+        }
+        new Thread(() -> {
+            List<HeadUnitExplorer.FileEntry> entries = explorer.listDirectory(currentPath);
+            if (entries == null) {
+                entries = HeadUnitExplorer.getDirectoryTree();
+                log("@ls failed, using hardcoded tree");
+            }
+            // Add back entry if not at root
+            List<HeadUnitExplorer.FileEntry> display = new ArrayList<>();
+            if (!"/".equals(currentPath) && !currentPath.isEmpty()) {
+                display.add(new HeadUnitExplorer.FileEntry("⬆ ..", parentPath(currentPath), true));
+            }
+            display.addAll(entries);
+            final List<HeadUnitExplorer.FileEntry> finalEntries = display;
+            runOnUiThread(() -> explorerAdapter.updateEntries(finalEntries));
+        }).start();
+    }
+
+    private void onExplorerItemClick(HeadUnitExplorer.FileEntry entry) {
+        if (entry.isDir) {
+            if (entry.name.startsWith("⬆")) {
+                // Go up
+                currentPath = entry.path;
+            } else {
+                pathStack.add(currentPath);
+                currentPath = entry.path.endsWith("/") ? entry.path : entry.path + "/";
+            }
+            refreshExplorer();
+        } else {
+            showFileDetail(entry);
+        }
+    }
+
+    private String parentPath(String path) {
+        String p = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
+        int idx = p.lastIndexOf('/');
+        if (idx <= 0) return "/";
+        return p.substring(0, idx + 1);
+    }
+
+    private void showFileDetail(HeadUnitExplorer.FileEntry entry) {
         View dlgView = getLayoutInflater().inflate(R.layout.dialog_file_detail, null);
-        android.widget.TextView txtPath = dlgView.findViewById(R.id.txtFilePath);
-        android.widget.TextView txtInfo = dlgView.findViewById(R.id.txtFileInfo);
-        android.widget.TextView txtResult = dlgView.findViewById(R.id.txtResult);
+        TextView txtPath = dlgView.findViewById(R.id.txtFilePath);
+        TextView txtInfo = dlgView.findViewById(R.id.txtFileInfo);
+        TextView txtResult = dlgView.findViewById(R.id.txtResult);
         Button btnMd5 = dlgView.findViewById(R.id.btnMd5);
         Button btnSha1 = dlgView.findViewById(R.id.btnSha1);
         Button btnDownload = dlgView.findViewById(R.id.btnDownload);
         Button btnSave = dlgView.findViewById(R.id.btnSave);
 
         txtPath.setText(entry.path);
-        txtInfo.setText(entry.isDir ? "Directory" : "File");
+        txtInfo.setText(entry.size > 0 ? formatSize(entry.size) : "File");
 
         final byte[][] downloadedData = {null};
 
-        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+        AlertDialog dlg = new AlertDialog.Builder(this)
                 .setView(dlgView).setNeutralButton("Close", null).create();
 
-        btnMd5.setOnClickListener(v -> new Thread(() -> {
-            try {
-                // Use lastResult's connection — for now just show we'd call checksum
-                log("CheckSum MD5 for " + entry.path);
-                runOnUiThread(() -> txtResult.setText("MD5: (requires active connection)"));
-            } catch (Exception e) {
-                runOnUiThread(() -> txtResult.setText("Error: " + e.getMessage()));
+        btnMd5.setOnClickListener(v -> {
+            if (explorer == null || !explorer.isConnected()) {
+                txtResult.setText("Not connected");
+                return;
             }
-        }).start());
+            btnMd5.setEnabled(false);
+            txtResult.setText("Computing MD5...");
+            new Thread(() -> {
+                try {
+                    String hash = explorer.getChecksum(entry.path, 0);
+                    runOnUiThread(() -> { txtResult.setText("MD5: " + hash); btnMd5.setEnabled(true); });
+                } catch (Exception e) {
+                    runOnUiThread(() -> { txtResult.setText("Error: " + e.getMessage()); btnMd5.setEnabled(true); });
+                }
+            }).start();
+        });
 
-        btnSha1.setOnClickListener(v -> new Thread(() -> {
-            try {
-                log("CheckSum SHA1 for " + entry.path);
-                runOnUiThread(() -> txtResult.setText("SHA1: (requires active connection)"));
-            } catch (Exception e) {
-                runOnUiThread(() -> txtResult.setText("Error: " + e.getMessage()));
+        btnSha1.setOnClickListener(v -> {
+            if (explorer == null || !explorer.isConnected()) {
+                txtResult.setText("Not connected");
+                return;
             }
-        }).start());
+            btnSha1.setEnabled(false);
+            txtResult.setText("Computing SHA1...");
+            new Thread(() -> {
+                try {
+                    String hash = explorer.getChecksum(entry.path, 1);
+                    runOnUiThread(() -> { txtResult.setText("SHA1: " + hash); btnSha1.setEnabled(true); });
+                } catch (Exception e) {
+                    runOnUiThread(() -> { txtResult.setText("Error: " + e.getMessage()); btnSha1.setEnabled(true); });
+                }
+            }).start();
+        });
 
-        btnDownload.setOnClickListener(v -> new Thread(() -> {
-            try {
-                log("Download " + entry.path);
-                runOnUiThread(() -> txtResult.setText("Downloading... (requires active connection)"));
-            } catch (Exception e) {
-                runOnUiThread(() -> txtResult.setText("Error: " + e.getMessage()));
+        btnDownload.setOnClickListener(v -> {
+            if (explorer == null || !explorer.isConnected()) {
+                txtResult.setText("Not connected");
+                return;
             }
-        }).start());
+            btnDownload.setEnabled(false);
+            txtResult.setText("Downloading...");
+            new Thread(() -> {
+                try {
+                    byte[] data = explorer.readFile(entry.path);
+                    downloadedData[0] = data;
+                    String hex = HexDump.format(data, 0, Math.min(data.length, 512));
+                    runOnUiThread(() -> { txtResult.setText(data.length + " bytes\n" + hex); btnDownload.setEnabled(true); });
+                } catch (Exception e) {
+                    runOnUiThread(() -> { txtResult.setText("Error: " + e.getMessage()); btnDownload.setEnabled(true); });
+                }
+            }).start();
+        });
 
         btnSave.setOnClickListener(v -> {
-            if (downloadedData[0] == null) return;
+            if (downloadedData[0] == null) {
+                txtResult.setText("Download first");
+                return;
+            }
             try {
                 java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(
                         android.os.Environment.DIRECTORY_DOWNLOADS);
@@ -440,7 +354,6 @@ public class MainActivity extends Activity {
                 log("Saved " + entry.path + " to " + file.getAbsolutePath());
                 txtResult.setText("Saved to: " + file.getAbsolutePath());
             } catch (Exception e) {
-                log("Save error: " + e.getMessage());
                 txtResult.setText("Save error: " + e.getMessage());
             }
         });
@@ -448,7 +361,9 @@ public class MainActivity extends Activity {
         dlg.show();
     }
 
-    // --- Log Tab ---
+    // ---------------------------------------------------------------
+    // Log Tab
+    // ---------------------------------------------------------------
 
     private void setupLogTab() {
         logView.findViewById(R.id.btnClear).setOnClickListener(v -> {
@@ -459,14 +374,24 @@ public class MainActivity extends Activity {
 
     private void refreshLog() {
         runOnUiThread(() -> {
-            android.widget.TextView txt = logView.findViewById(R.id.txtLog);
+            TextView txt = logView.findViewById(R.id.txtLog);
             synchronized (logBuffer) { txt.setText(logBuffer.toString()); }
-            android.widget.ScrollView sv = logView.findViewById(R.id.scrollLog);
+            ScrollView sv = logView.findViewById(R.id.scrollLog);
             sv.post(() -> sv.fullScroll(View.FOCUS_DOWN));
         });
     }
 
-    // --- Connection ---
+    // ---------------------------------------------------------------
+    // Connection
+    // ---------------------------------------------------------------
+
+    private void updateAllTabs() {
+        updateProbeStatus(explorer != null && explorer.isConnected()
+                ? "Connected: " + explorer.getServerName()
+                : "Not connected");
+        updateDeviceTab();
+        if (activeTab == tabExplorer) refreshExplorer();
+    }
 
     @Override
     protected void onDestroy() {
@@ -488,10 +413,8 @@ public class MainActivity extends Activity {
         if (accessory != null) {
             UsbManager usb = (UsbManager) getSystemService(USB_SERVICE);
             if (usb.hasPermission(accessory)) {
-                log("Have USB permission");
                 runProbeOverUsb(accessory);
             } else {
-                log("Requesting USB permission...");
                 usb.requestPermission(accessory, permissionIntent);
             }
         }
@@ -501,12 +424,15 @@ public class MainActivity extends Activity {
         log("Connecting to " + host + ":" + port + "...");
         updateProbeStatus("Connecting...");
         new Thread(() -> {
-            try (java.net.Socket sock = new java.net.Socket(host, port)) {
-                lastResult = NftpProbe.run(sock.getInputStream(), sock.getOutputStream(), this::log);
-                updateProbeStatus(lastResult.isSuccess() ? "Connected: " + lastResult.serverName : "Failed: " + lastResult.error);
-                updateDeviceTab();
+            try {
+                java.net.Socket sock = new java.net.Socket(host, port);
+                HeadUnitExplorer exp = new HeadUnitExplorer();
+                exp.connect(sock.getInputStream(), sock.getOutputStream(), this::log);
+                explorer = exp;
+                updateAllTabs();
             } catch (Exception e) {
                 log("TCP error: " + e.getMessage());
+                explorer = null;
                 updateProbeStatus("Error: " + e.getMessage());
             }
         }).start();
@@ -522,12 +448,8 @@ public class MainActivity extends Activity {
             try {
                 ParcelFileDescriptor pfd = usb.openAccessory(accessory);
                 if (pfd == null) { log("Failed to open accessory"); probeRunning = false; return; }
-                log("Accessory fd=" + pfd.getFd());
                 java.io.FileDescriptor rawFd = pfd.getFileDescriptor();
                 FileInputStream in = new FileInputStream(rawFd);
-                try { int avail = in.available(); if (avail > 0) log("Pre-Init bytes: " + avail); }
-                catch (Exception e) { log("available() not supported: " + e.getMessage()); }
-
                 java.io.OutputStream out = new java.io.OutputStream() {
                     public void write(int b) throws java.io.IOException { write(new byte[]{(byte) b}, 0, 1); }
                     public void write(byte[] b, int off, int len) throws java.io.IOException {
@@ -536,12 +458,14 @@ public class MainActivity extends Activity {
                     }
                 };
                 try {
-                    lastResult = NftpProbe.run(in, out, this::log);
-                    updateProbeStatus(lastResult.isSuccess() ? "Connected: " + lastResult.serverName : "Failed: " + lastResult.error);
-                    updateDeviceTab();
+                    HeadUnitExplorer exp = new HeadUnitExplorer();
+                    exp.connect(in, out, this::log);
+                    explorer = exp;
+                    updateAllTabs();
                 } finally { in.close(); pfd.close(); probeRunning = false; }
             } catch (Exception e) {
                 log("USB error: " + e.getMessage());
+                explorer = null;
                 updateProbeStatus("Error: " + e.getMessage());
                 probeRunning = false;
             }
@@ -549,8 +473,15 @@ public class MainActivity extends Activity {
     }
 
     private void log(String msg) {
-        android.util.Log.i("NftpProbe", msg);
+        Log.i("NftpProbe", msg);
         synchronized (logBuffer) { logBuffer.append(msg).append('\n'); }
         if (activeTab == tabLog) refreshLog();
+    }
+
+    private static String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 }

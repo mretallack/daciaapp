@@ -21,4 +21,11 @@
         android:layout_weight="1"
         android:textSize="14sp"
         android:paddingStart="12dp" />
+
+    <TextView
+        android:id="@+id/txtSize"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="#888888" />
 </LinearLayout>

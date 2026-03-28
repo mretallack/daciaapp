@@ -336,6 +336,27 @@ public class NftpProbe {
         return buf.toByteArray();
     }
 
+    /** Build @ls query using compact 0x8d identifiers: (@ls, path, #{fields: (@name, @size, @isFile)}) */
+    static byte[] buildLsQueryCompact(String path, String... fields) {
+        if (fields.length == 0) fields = new String[]{"name", "size", "isFile"};
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        buf.write(0x04);
+        NngSerializer ser = new NngSerializer();
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(3);
+        ser.writeIdentifier("ls");
+        ser.writeString(path);
+        ser.writeTag(NngSerializer.TAG_DICT_VLI_LEN);
+        ser.writeVlu(1);
+        ser.writeIdentifier("fields");
+        ser.writeTag(NngSerializer.TAG_TUPLE_VLI_LEN);
+        ser.writeVlu(fields.length);
+        for (String f : fields) ser.writeIdentifier(f);
+        byte[] payload = ser.toBytes();
+        buf.write(payload, 0, payload.length);
+        return buf.toByteArray();
+    }
+
     /** Send QueryInfo and parse response. Returns deserialised result or null on error. */
     public static Object queryInfo(NftpConnection conn, Logger log, String... keys) throws IOException {
         byte[] body = buildQueryInfo(keys);
@@ -359,6 +380,31 @@ public class NftpProbe {
         } catch (Exception e) {
             log.log("QueryInfo parse error: " + e.getClass().getName() + ": " + e.getMessage());
             log.log("QueryInfo raw payload: " + hex(resp, resp.length));
+            return null;
+        }
+    }
+
+    /** Send @ls QueryInfo and parse response. Returns deserialised result or null on error. */
+    public static Object queryLs(NftpConnection conn, Logger log, String path) throws IOException {
+        byte[] body = buildLsQueryCompact(path);
+        log.log("QueryInfo @ls '" + path + "' (" + body.length + " bytes): " + hex(body));
+        byte[] resp = conn.sendAndReceive(body);
+        log.log("@ls response (" + resp.length + " bytes): " + hex(resp, 128));
+        if (resp.length == 0 || resp[0] != 0x00) {
+            int status = resp.length > 0 ? (resp[0] & 0xFF) : -1;
+            log.log("@ls failed: status=" + status);
+            return null;
+        }
+        if (resp.length <= 1) {
+            log.log("@ls: empty response");
+            return null;
+        }
+        try {
+            Object result = NngDeserializer.decode(resp, 1);
+            log.log("@ls parsed: " + describeValue(result));
+            return result;
+        } catch (Exception e) {
+            log.log("@ls parse error: " + e.getMessage());
             return null;
         }
     }
