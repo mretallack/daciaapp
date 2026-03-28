@@ -156,9 +156,9 @@ All new code must log extensively to aid debugging, especially for protocol-leve
 ## 10. UI — File Detail Dialog
 
 - [x] Basic AlertDialog with file detail layout
-- [x] "Get MD5" button → calls `getChecksum(path, 0)` → displays result
-- [x] "Get SHA1" button → calls `getChecksum(path, 1)` → displays result
-- [x] "Download" button → calls `readFile(path)` → shows hex dump
+- [ ] "Get MD5" button → calls `getChecksum(path, 0)` → displays result (currently stub — shows "requires active connection")
+- [ ] "Get SHA1" button → calls `getChecksum(path, 1)` → displays result (currently stub — shows "requires active connection")
+- [ ] "Download" button → calls `readFile(path)` → shows hex dump (currently stub — shows "requires active connection")
 - [x] "Save to phone" button → saves downloaded bytes to phone Downloads folder
 - [ ] Show file size warning for large files (>1MB)
 

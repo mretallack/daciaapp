@@ -1,5 +1,17 @@
 # NFTP Probe — Explorer Features Design
 
+> **⚠️ PARTIALLY OUT OF DATE (2025-03-28):** This design was written when QueryInfo was
+> blocked by the symbol ID problem — all `@device`, `@brand`, `@fileMapping`, `@ls` etc.
+> queries were marked as blocked/skipped because we couldn't figure out how to encode
+> NNG symbol identifiers on the wire. That problem has since been solved: the NNG compact
+> serialisation format uses `0x8d` + null-terminated string names, not integer symbol IDs.
+> This was discovered by running the real NNG SDK on Android and capturing the bytes it
+> produces via `Stream(@compact)`. See the "BREAKTHROUGH: NNG Compact Serialisation"
+> section in `nftp.md` for full details. As a result, all the "BLOCKED" and "SKIPPED"
+> items in this design (QueryInfo, dynamic `@ls` browsing, device/disk info) are now
+> unblocked and can be implemented. The workarounds (hardcoded file mapping, GetFile-only
+> explorer) are no longer necessary as the sole approach.
+
 ## Goal
 
 Extend the NFTP Probe app from a simple Init+GetFile probe into a head unit explorer that can query device info, browse the filesystem, read files, and compute checksums — all read-only.
