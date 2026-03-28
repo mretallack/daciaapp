@@ -1,0 +1,205 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Init connection"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { DbusConnection } from \"dbus/dbus.xs\"",
+        "",
+        "DbusConnection sessionbus; ",
+        "{}",
+        "",
+        "await sessionbus.connect();",
+        "console.log(\"connection ready, unique name: \", sessionbus.name);",
+        "await sessionbus.messageBus.RequestName(\"com.nng.navi\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Address search"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### Search implementation with signal updates and separate search task object export"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { makeInterface } from \"dbus/dbusCommunicator.xs\"",
+        "import {map} from \"system://functional\"",
+        "",
+        "class SearchTask {",
+        "    static interface;",
+        "    state; // in progress, done etc.",
+        "    results = [];",
+        "    #signals;",
+        "    #term;",
+        "    ",
+        "    constructor(path, term) {",
+        "        this.#signals = sessionbus.registerObject(path, this).broadcaster;",
+        "        this.#term = term;",
+        "    }   ",
+        "    ",
+        "    addMockResults(num) {",
+        "        for (let idx = 0; idx < num; ++idx) {",
+        "            const id = this.results.length;",
+        "            this.results.push({",
+        "                name: `Mock ${this.#term} ${id}`,",
+        "                distance: Math.random(5000),",
+        "                pos: {",
+        "                    lat: 47 + Math.random(1000) * 0.0004,",
+        "                    lon: 23 + Math.random(1000) * 0.0002",
+        "                }",
+        "            });",
+        "        }",
+        "    }",
+        "    ",
+        "    async launch() {",
+        "        // when state is updated",
+        "        this.#signals.broadcast(@StateChanged, \"searching\");",
+        "        await Chrono.delay(1s);",
+        "        this.addMockResults(3);",
+        "        this.#signals.broadcast(@ResultsUpdated, this.results.length);",
+        "        await Chrono.delay(3s);",
+        "        this.addMockResults(5);",
+        "        this.#signals.broadcast(@ResultsUpdated, this.results.length);",
+        "        this.#signals.broadcast(@StateChanged, \"done\");",
+        "    } ",
+        "    ",
+        "    GetResults() {",
+        "        return map(this.results, res => (res.name, res.distance, (res.pos.lat, res.pos.lon)))",
+        "    }",
+        "}",
+        "",
+        "class AddressSearch {",
+        "    static interface;",
+        "    ",
+        "    #taskIdx = 1;",
+        "    ",
+        "    Start(what) {",
+        "        console.log(\"Searching for: \", what);",
+        "        ",
+        "        const taskPath = `/com/nng/navi/addressSearch/tasks/search${this.#taskIdx++}`;",
+        "        const task = new SearchTask(taskPath, what); // auto registers itself",
+        "        task.launch();",
+        "        return taskPath;",
+        "    }",
+        "}",
+        "",
+        "AddressSearch.interface = makeInterface({",
+        "    name: \"com.nng.navi.addressSearch\",",
+        "    methods : {",
+        "        Start: (\"what:string\", \"string\"), ",
+        "    }",
+        "});",
+        "",
+        "",
+        "",
+        "SearchTask.interface = makeInterface({",
+        "    name: \"com.nng.navi.addressSearch.Task\",",
+        "    methods: {",
+        "        GetResults: (\"\", \"(name:string, distance:double, position:(lat:double, lon:double))[]\")    ",
+        "    },",
+        "    signals: {",
+        "        StateChanged: \"newState: string\",",
+        "        ResultsUpdated: \"numResults: uint\",",
+        "    }",
+        "});",
+        "",
+        "AddressSearch search;",
+        "sessionbus.registerObject(\"/com/nng/navi/addressSearch\", search); ",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### Implementation with 'listener' object",
+        "",
+        "In this case we expose an interface, where providing a `listener` from the caller side is required.    ",
+        "The listener is a struct consisting of the caller's _bus name_ and the _object path_ to the listener object."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { AddressSearch } from \"uie/samples/dbusAddressSearch.xs\"",
+        "",
+        "const search = new AddressSearch(sessionbus);",
+        "sessionbus.registerObject(\"/com/nng/navi/address/search\", search); "
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Signatures"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { transformSignature } from \"system://dbus\"",
+        "{}",
+        "",
+        "transformSignature(\"results:(name:string[], distance:double, pos:(lat:double, lon:double))[]\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "transformSignature(\"provider:byte, filter:string, listener:(busAddr:string, path:string)\")"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "An example of interface with broken signature syntax:"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {makeInterface} from \"dbus/dbusCommunicator.xs\"",
+        "const SearchListenerInterface = {",
+        "    name: \"com.nng.navi.address.search.Listener\",",
+        "    methods: {",
+        "        OnResults:  (\"results:(name:string, distance:double, pos:(lat:double, lon:double)[]\", \"\"),",
+        "        OnComplete: (\"\", \"int[]\")",
+        "    },",
+        "    properties: {",
+        "        Test: \"kutya\",",
+        "        Test2: \"string[]\"",
+        "    },",
+        "    signals: {",
+        "        MyChanged: \"what:string, where:uint8\"",
+        "    }",
+        "};",
+        "",
+        "{}",
+        "makeInterface(SearchListenerInterface)"
+      ]
+    }
+  ]
+}

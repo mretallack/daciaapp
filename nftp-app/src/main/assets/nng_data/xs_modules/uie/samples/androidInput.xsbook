@@ -1,0 +1,208 @@
+{
+  "cells": [
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as sm from \"android://softInput\"",
+        "import {lazyAsync, failure} from \"system://core\"",
+        "import {firstValueFrom, observeValue, onChange} from \"core://observe\"",
+        "import {proxy} from \"system://core.proxy\"",
+        "import inputFocus from \"uie/input/inputFocus.xs\"",
+        "",
+        "getInputFocus() { inputFocus.getInputFocus(screen.root)}",
+        "",
+        "logCallMethod(target, method, thisArg, ...args) {",
+        "    console.log(`called ${target?.name}.${method} with `, ...args);",
+        "    if (target?.method)",
+        "        target?.method(...args)",
+        "}",
+        "methodLogger(target={}) {",
+        "    proxy(target, {callMethod:logCallMethod});",
+        "}",
+        "",
+        "object handler {",
+        "    name = \"IC\"",
+        "    con;",
+        "    info;",
+        "    compStart=-1;",
+        "    compEnd=-1;",
+        "    onCreated( con, info ) {",
+        "        this.con = con;",
+        "        this.info = info;",
+        "        console.log(\"created\")",
+        "    }",
+        "    deleteSurroundingText(before,after) {",
+        "        console.log(\"delete surrounding\", before, after);",
+        "        if (const t = getInputFocus()) {",
+        "            t.deleteSurrounding(before,after);",
+        "        }",
+        "    }",
+        "    onEvent(evt, ...args) {console.log(`ICEvent:${evt}`, ...args)}",
+        "    replace(from,end, text, cursorPos) {",
+        "        console.log(\"replace\", text, cursorPos);",
+        "        if (const t = getInputFocus()) t.replace(from, end, text, cursor)",
+        "    }",
+        "    onKeyEvent(evt) {",
+        "        // keyevent is normaly only sent when BasicInputconnection is not in fullEdit mode. ",
+        "        // However, there are some keys (numeric) that doesn't seem to be commited",
+        "        if (evt.igoKey != undef) {",
+        "            console.log(`Raw key ${evt.igoKey} (action: ${evt.action})`);",
+        "            // evt.igokey == 8 is backspace, probably it should be ignored right after deleteSurroundingText",
+        "            Events.simulateRawKey(screen.root, evt.igoKey, evt.action == 0 ? 1 : 2);",
+        "            return",
+        "        }",
+        "        if (evt.action == 1) // ignore up",
+        "            return;",
+        "        console.log(\"keyevent\", evt);",
+        "        const t = getInputFocus();",
+        "        if (evt.charCode) {",
+        "            t.keyPressed(string.fromCharCode(evt.charCode))",
+        "        } else if (evt.chars) {",
+        "            t.appendText(evt.chars, undef)",
+        "        }",
+        "    }",
+        "}",
+        "{}",
+        "sm.showKeyboard(screen.root.nativeWindow, undef, handler);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "// sed into info: imeOptions:3 is search, initial text is 'alma', inputType:1 is text that allows suggestions and so on",
+        "const info = sm.EditorInfoWithInput.fromEntries(#{imeOptions:3, text:'alma', hintText:\"keress csomagra\", fieldName:\"search\", inputType:1});",
+        "sm.showKeyboard(screen.root.nativeWindow, info, handler);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "sm.EditorInfo.staticProps"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Allow passing key events to view. Otherwise it is kept for the input"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "handler.con.extractedText().text.toString()"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "handler.con.input.text.subSequence(4,4)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as sm from \"android://softInput\"",
+        "import {lazyAsync, failure} from \"system://core\"",
+        "import {firstValueFrom, observeValue, onChange} from \"core://observe\"",
+        "import {proxy} from \"system://core.proxy\"",
+        "import inputFocus from \"uie/input/inputFocus.xs\"",
+        "getInputFocus() { inputFocus.getInputFocus(screen.root)}",
+        "{}",
+        "if (const t = getInputFocus())",
+        "    t.setComposing(0,9, \"almafa\",1)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as sm from \"android://softInput\"",
+        "import {androidKeyboardManager as mgr} from \"uie/components/keyboard.ui\"",
+        "textWithCursor(txt, curPos) {",
+        "    (txt.toString() ?? txt).substr(curPos,0, '^')",
+        "}",
+        "",
+        "{}",
+        "const icInput = mgr.ic.input;",
+        "//$log(icInput.text.toString(), icInput.selection.last));",
+        "$log(textWithCursor(icInput.text, icInput.selection.last));",
+        "const xtr=mgr.ic.extractedText();",
+        "$log(textWithCursor(xtr.text, xtr.selectionStart));",
+        "$log(mgr.ic.getTextBeforeCursor(10, 0), 0, mgr.ic.getTextAfterCursor(10, 0))",
+        "//mgr.ic"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as sm from \"android://softInput\"",
+        "import {androidKeyboardManager as mgr} from \"uie/components/keyboard.ui\"",
+        "{}",
+        "// text with styles test",
+        "const icInput = mgr.ic.input;",
+        "$log(mgr.ic.getTextBeforeCursor(10, 1), 0, mgr.ic.getTextAfterCursor(10, 1))"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {readText, writeText, hasText, getPrimaryClipDescription} from \"android://clipboard\"",
+        "{}",
+        "//$log(clipboard);",
+        "$log(await hasText());",
+        "$log(string(await readText()));",
+        "const desc = await getPrimaryClipDescription();",
+        "desc.hasMimeType(\"text/plain\"), desc.getMimeTypeCount(), desc.getMimeType(0)",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {readText, writeText, hasText, getPrimaryClipDescription, onClipboardChanged} from \"android://clipboard\"",
+        "{}",
+        "const onT=onClipboardChanged(async (has)=>console.log(\"cb text\", has, await readText()));",
+        "await Chrono.delay(1min, $cancellation)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "uie/android/clipboard.xs provides real subscription<br>",
+        "Unfortunatelly it is not straightforward to make an optional forwarding module. TODO"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {clipboardChanged, hasText, readText} from \"uie/android/clipboard.xs\"",
+        "{}",
+        "const onT = clipboardChanged.subscribe(async (has)=>console.log(\"cb text\", has, await readText()));",
+        "await Chrono.delay(1min, $cancellation)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as sm from \"android://softInput\"",
+        "{}",
+        "sm.EditorInfoWithInput.fromEntries(#{text:\"szoveg\", cursor:3, inputType:3, imeOptions:4})"
+      ]
+    }
+  ]
+}

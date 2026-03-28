@@ -1,0 +1,378 @@
+import { currentUser, isAccessTokenValid, showLogoutMsgBox, startRegistration, formHandler, formCar, frForm } from "./user.ui"
+import {} from "./userProfile.nss.xs"
+import {list} from "system://core.types"
+import { from, map, concat } from "system://list.transforms"
+import { app, yellowStorage, requestSFPermissions, defaultPushServer, getSalesforcePermissions } from "../app.xs"
+import { headUnit } from "../toolbox/connections.xs"
+import { formatSize } from "../components/packageSelector.xs";
+import {fmt} from "fmt/formatProvider.xs"
+import { setDevice, renameDevice, knownDevices } from "../toolbox/device.xs"
+import { Messagebox, Button, MsgboxInputData, frMessageboxWithInput } from "../components/messageboxes.xs"
+import {bindProperty, unbindProperty} from "core://observe"
+import { i18n, translate} from "system://i18n"
+import {languages} from "../utils/languages.xs"
+import * as i18nMod from "system://i18n"
+import {tDropDownItem} from "~/src/components/dropMenu.ui"
+import * as networkStatus from "~/src/toolbox/networkStatus.xs"
+import {downloads} from "~/src/toolbox/download.xs"
+import { PermissionType, openSettings} from "uie/android/permissions.xs"
+import * as os from "system://os"
+import {Banner, banner} from "~/src/components/banner.xs"
+import { config } from "../app.xs"
+import {openUrl} from "~/src/utils/util.xs"
+
+export const notificationBanner = new Banner(
+	( i18n`We can't send you offers.` ,"\n", i18n`Please enable notifications in the OS settings.`),
+	{ icon: "notification_bell.svg", active: true, level: @warning, onRelease(){ if ( app.currentScreen.id != @Settings ) app.next( @Settings ); settingsProperties.bannerClosed = true }, closeAction(){settingsProperties.bannerClosed = true}}
+);
+export const trackingBanner = new Banner(
+	( i18n`We can't send you offers.` ,"\n", i18n`Please enable tracking in the OS settings.`),
+	{ icon: "notification_bell.svg", active: true, level: @warning, onRelease(){ if ( app.currentScreen.id != @Settings ) app.next( @Settings ); settingsProperties.bannerClosed = true }, closeAction(){settingsProperties.bannerClosed = true}}
+);
+
+const userDataList = [
+    { field: i18n`Redeem a code`, onRelease(controller){ app.next( @Redeem ) }, type: @button, enable: _ => { (headUnit.device || headUnit.lastConnectedDevice) && currentUser.infosReady && isAccessTokenValid(currentUser.token) } },
+    { field: i18n`Settings`, onRelease(controller){ app.next( @Settings );}, type: @button },
+    { field: i18n`Help`, onRelease(controller){ app.next( @Help ) }, type: @button },
+    { field: i18n`Cars`, enable: _=> knownDevices.list.length,  onRelease(){ app.next( @CarList ) }, type: @button },
+    { field: i18n`Personal Information`, onRelease( controller  ){
+        formHandler.reset();
+        currentUser.copyToForm();
+        app.next( @UserEdit )
+    }, type: @button, enable: _ => { currentUser.infosReady && isAccessTokenValid(currentUser.token) } },
+    { field: i18n`Billing information`, onRelease(){
+        formHandler.reset();
+        currentUser.copyToForm();
+        app.next( @AddressEdit )
+    }, type: @button, enable: _ => { currentUser.infosReady &&  isAccessTokenValid(currentUser.token) } },
+    { field: i18n`Logout`, onRelease(){ showLogoutMsgBox() }, type: @button, enable: _ => { isAccessTokenValid(currentUser.token) } },
+    odict{ field=i18n`Delete account.`; onRelease(){ openUrl( config.links.deleteAccount ?? config.links.default ) }; type=@textWithLink; visible:= { isAccessTokenValid(currentUser.token) } },
+];
+
+export object settingsProperties{
+    async init(){
+        const permissions = await getSalesforcePermissions();
+        this.notiPermission = permissions.notification;
+        this.trackingPermisson = permissions.tracking;
+        if( !this.appFocusSubs )
+            this.appFocusSubs = os.applicationFocusedEvent.subscribe( async () => { 
+                const permissions = await getSalesforcePermissions();
+                this.notiPermission = permissions.notification;
+                this.trackingPermisson = permissions.tracking;
+            });
+    }
+    get salesforcePermissions() { this.notiPermission && this.trackingPermisson }
+    appFocusSubs;
+    notiPermission = false;
+    trackingPermisson = false;
+    bannerClosed = false;
+}
+
+list settings[
+    object{ field= i18n`Language`; language<=>languages.langCode; },
+    object{ field= i18n`Download content only via WiFi connection`; value<=>yellowStorage.wifiOnly; type=@switch;
+        onRelease(){
+            let ns = networkStatus.getStatus();
+            if( ns.metered && yellowStorage.wifiOnly && downloads.list.length ){
+                let noti = new Messagebox;
+                noti.addLine(i18n`This setting won't affect the current downloads in progress.`)
+                    .setOverlay()
+                    .addIcon( "Network.svg" )
+                    .addButton( new Button({text:i18n`Next`, style:@info }))
+                    .show();
+            }
+        }
+    },
+    object{ 
+        field=i18n`Enable the push notifications`; type=@switch; visible=( SysConfig.get("yellowBox", "pushServer", defaultPushServer) != "none" );
+        value<=>yellowStorage.pushNotiEnabled;
+        onRelease(){
+            async do {
+                yellowStorage.notiPermissionAsked = true;
+                if ( yellowStorage.pushNotiEnabled ){
+                    await requestSFPermissions();
+                }
+            }
+        }
+     },
+     object{
+        field = ( 
+            !settingsProperties.notiPermission ? 
+                i18n`To receive notifications you have to enable notifications for this app` :
+                i18n`Unfortunately we can't send you personalized deals and offers, until you enable tracking for this app in settings.`
+        )
+        type = @osNotificationSettings;
+        button = object { 
+            label = i18n`Open Settings`;
+            async action(){
+                const result = await requestSFPermissions();
+                if (result.shouldShowRationale) {
+                    openSettings(PermissionType.NOTIFICATION)
+                }
+            }
+        };
+        visible = ( SysConfig.get("yellowBox", "pushServer", defaultPushServer) != "none" && yellowStorage.pushNotiEnabled && !settingsProperties.salesforcePermissions)
+     }
+]
+
+getAddressInfoList( item ) {
+    return [
+        //{ field: i18n`Type`, text: item.addressType ?? i18n`n/a`, icon: "profile.svg" },
+        { field: "", data: ( (item.firstName ?? "") + ( item?.lastName ? (" " + item.lastName) : "" )) },
+        { field: "", data: ( (item.lines[0] ?? "") + ( item?.lines[1] ? (" " + item.lines[1]) : "" )) },
+        { field: "", data: ( (item.postalCode ?? "") + ( item?.city ? (" " + item.city) : "")) },
+        { field: "", data: ( (item.country ?? "") + ( item?.region ? (" " + item.region) : "")) },
+    ]
+}
+
+<template tAddress class=flexible, horizontal, smallPadding onRelease(){ item.action(param.controller, index-1) }>
+    own {
+        <template tDataItem class=flexible, horizontal>
+            <text class=paragraph text=( item.data )>
+        </template>
+    }
+
+    <group class=flexible, vertical>
+         <text class=h2, smallPaddingY text=( item.title ?? "" )/>
+         <lister model=( item.dataList ) template=tDataItem />
+    </group>
+    <spacer flex=1>
+    <sprite class=icon, small, actionChevron />
+    <sprite class=separator, list>
+</template>
+
+<template tTitleField class=flexible, vertical>
+    <group title class=flexible, vertical, smallPaddingY, userTitle valign=@center>
+        <text class=h2 text=(item.titleMain) visible=( item.titleMain )/>
+        <text class=h2 text=(item.titleSecondary) visible=( item.titleSecondary )/>
+    </group>
+    <sprite class=separator visible=(item.dataList)/>
+    <group class=flexible, vertical, dataInfo visible=( item.dataList )>
+        <lister model=( item.dataList ) template=( item.dataTemplate ) />
+    </group>
+    <sprite class=separator />
+</template>
+
+<template tDataField class=flexible, horizontal visible=(item?.data) >
+    <text class=paragraph text=( item.field ? item.field : "" ) visible=(item.field)/>
+    <spacer flex=1>
+    <text class=paragraph text=( item.data ?? "" ) />
+</template>
+
+<template tSimpleLink class=flexible, horizontal onRelease(){ item.onRelease() }>
+   <text class= twoline, medium, underline text=( item.field ?? "")/>
+    <spacer flex=1>
+    <sprite class=icon, small, actionChevron />
+    <sprite class=separator, list>
+</template>
+
+<template tLink class=flexible, horizontal onRelease(){ item.onRelease() } visible=(item?.visible)>
+    <text class= twoline, medium, underline, smallPaddingY flex=1 align="right" text=( item.field ?? "")/>
+</template>
+
+itemEnabled(item) {
+    (item?.enable != undef) ? item.enable() : true;
+}
+
+export <template tAction class=flexible, horizontal/*, field */onRelease(){ item.onRelease(param.controller) } enable=(itemEnabled(item))>
+    <sprite class=icon, user img=(item.icon ?? "") />
+    <text class=paragraph, twoline text=( item.field ?? "")/>
+    <spacer flex=1>
+    <sprite class=icon, small, actionChevron />
+    <sprite class=separator, list>
+</template>
+
+export <template tSwitch class=flexible, horizontal enable=(itemEnabled(item)) visible=( item.visible ?? true )>
+    <switch class=switchPadding checked<=>item.value boxAlign=@center onRelease(){ ??item.onRelease() }>
+        <text class=paragraph text=( item.field ?? item.title ?? "" ) />
+    </switch>
+    <sprite class=separator, list>
+</template>
+
+export <template tTextWithLink class=flexible, vertical, mainPaddingY onRelease(){ ??item.onRelease() }
+    checked=(item?.checked)>
+    <group class=flexible, horizontal>
+        <text class=paragraph, twoline text=(item.field ?? "")/>
+        <spacer flex=1>
+        <sprite class=icon, small />
+    </group>
+    <text class= twoline, medium, underline, linkBlue text=( item.secondLine ?? "")/>
+    <sprite class=separator, list>
+</template>
+
+export <template tSwitchWithLink class=flexible, horizontal, mainPaddingY enable=(itemEnabled(item)) visible=( item.visible )>
+    <group class=flexible, vertical>
+        <switch class=( !item?.secondLine?.visible ? @switchPadding : "" ) checked<=>item.switch.value
+            onRelease(){ ??item.switch.onRelease() } 
+            onBeforeRelease(){
+                if ( item?.switch?.knobEnable == false )
+                    return;
+                invert( this.checked );
+            } 
+        >
+            <text class=paragraph text=(item.field ?? "")/>
+        </switch>
+        <text class=twoline, medium, underline, linkBlue, switchPadding text=( item.secondLine.text ?? "") onRelease(){ ??item.secondLine.action() } visible=( item?.secondLine?.visible ?? true )/>
+	</group>
+    <sprite class=separator, list>
+</template>
+
+export <template tOSNotificationSettings class=flexible, horizontal, mainPaddingY visible=( item.visible ?? true )>
+	<group class=flexible, vertical flex=1>
+		<text class= medium wordWrap=10 text=(item?.field ?? "") />
+		<button class=large, form, secondary text=(item?.button?.label) onRelease(){ item?.button?.action()} visible=( (item?.button ?? false) && (item?.button?.visible ?? true) ) />
+    	<sprite class=separator, list, largePaddingX visible=(index < owner.model.length - 1 )/>
+	</group>
+</template>
+
+export <fragment frUserScreenBase class=main, flexible, vertical>
+    own {
+        let mainTitle = "";
+        let subTitle = "";
+        let titleDataList = undef;
+        let titleField = [odict{
+            titleMain := mainTitle;
+            titleSecondary := subTitle;
+            dataList := titleDataList;
+            dataTemplate = tDataField;
+            type = @title
+        }];
+        let baseList = [];
+        let listModel := (( mainTitle || subTitle ) ? from( titleField ).concat( baseList ).build() : baseList );
+        let template = tDataField;
+    }
+    <includeChildren filter=".beforeList"/>
+    <group class=flexible, vertical, mainContentPadding, dataInfo, scrollable flex=1 valign=@top>
+        <lister model=( listModel ) template=( template ) templateType(){
+            if ( item?.type == @title ) return tTitleField;
+            if ( item?.type == @button ) return tAction;
+            if ( item.type == @link ) return tSimpleLink;
+            if ( item?.type == @address ) return tAddress;
+            if ( item?.type == @switch ) return tSwitch;
+            if ( item?.type == @switchWithLink ) return  tSwitchWithLink;
+            if ( item?.type == @osNotificationSettings ) return tOSNotificationSettings;
+            if (item?.type == @textWithLink) return tLink;
+            return @default;
+        } param={controller} />
+        <wheel/>
+        <scroll/>
+    </group>
+    <includeChildren />
+</fragment>
+
+export <fragment frSettings extends=frUserScreenBase 
+    onShow() {
+        notificationBanner.activate();
+        trackingBanner.activate();
+    }>
+    own{
+        let mainTitle = i18n`Settings`;
+        let baseList = settings;
+        let template = tLangSelector;
+       	let needPermissions = (yellowStorage.pushNotiEnabled && !settingsProperties.bannerClosed && SysConfig.get("yellowBox", "pushServer", defaultPushServer) != "none");
+
+        <template tDropMenuLang boxAlign=@stretch>
+	        <text class=paragraph wordWrap=1 text=(languages.languagesMapping[item].name)/>
+        </template>
+        <template tDropDownLangItem extends=tDropDownItem>
+	        <text class=detail fontSize=16 text=(languages.languagesMapping[item].name) />
+	        <spacer flex=1 />
+        </template>
+        <template tLangSelector class=flexible, horizontal, mainPaddingY>
+            <dropMenu title=i18n`Language` dir=@down value<=>item.language items=(languages.languagesMapping.keys) 
+                templateItem = tDropDownLangItem
+                templateMenu = tDropMenuLang
+                onChangeFunc=((newCode) => {
+                    languages.changeLanguage(newCode);
+                })
+            />
+        </template>
+    }
+    <banner class=mediumMarginX, beforeList banner=(notificationBanner) visible=( needPermissions && !settingsProperties.notiPermission ) />
+    <banner class=mediumMarginX, beforeList banner=(trackingBanner) visible=( needPermissions && !settingsProperties.trackingPermisson ) />
+</fragment>
+
+export <fragment frCars extends=frUserScreenBase>
+    own{
+        let connectedDevice = ( headUnit.device );
+        let device = ( headUnit.device ?? headUnit.lastConnectedDevice );    
+        let baseList = ( knownDevices.list );
+        let mainTitle = i18n`Registered Cars`;
+        let template = tActionCars;
+
+        <template tActionCars class=flexible, horizontal, field onRelease(){  formCar.fill( item ); app.next( @CarSettings );} >
+            <text class=( @paragraph, @twoline, item.swid == device.swid ? @bd : "" ) text=( item.name ?? "") flex=3/>
+            <spacer flex=1>
+            <sprite class=icon, small, actionChevron />
+            <sprite class=separator, list>
+        </template>
+    }
+</fragment>
+
+export <fragment frCarSettings extends=frForm>
+    <group class=flexible, vertical >
+        <group class=flexible, horizontal, carHeader>
+            <group class=flexible, vertical boxAlign=@left>
+                <text class=paragraph text=i18n`Free space:` visible=( headUnit.device.swid == formCar.swid )/>
+                <text class=paragraph text=i18n`Last sync:`/>
+                <text class=paragraph text=i18n`Map type:` />
+            </group>
+            <spacer flex=1>
+            <group class=flexible, vertical boxAlign=@right>
+                <text class=paragraph text=( headUnit?.freeDiskSize ? fmt( i18n`{0} of {1}`, formatSize(headUnit.freeDiskSize ?? 0 ), formatSize(headUnit.diskSize ?? 0 )) : undef ) visible=( headUnit.device.swid == formCar.swid )/>
+                <text class=paragraph text=(fmt(`{:datetime|${languages.dateFormat}}`, formCar.lastConnected ?? {} ))/>
+                <text class=paragraph text=( formCar.mapType ) />
+            </group>
+         </group>
+        <sprite class=separator, form />
+    </group>
+</fragment>
+
+// unused method
+changeCarMsgbox( car ){
+    if ( !car ) return;
+	let noti = new Messagebox;  
+	let button = new Button({ text:i18n`Change car`,  action: () => { ??setDevice( car.swid ) }}); 
+	noti.addLine(fmt(i18n`Are you sure you want to switch to this car? {0}`, car.name))
+		.setOverlay()
+		.addIcon( "simple_car.svg" )
+        .addButton( new Button( { text:i18n`Cancel`, style:@info } ))
+        .addButton( button );
+	noti.show();
+}
+
+// unused method
+renameCarMsgbox( car ){
+    let noti = new Messagebox;
+    let inputData = MsgboxInputData{ title=fmt("{0:s}*", i18n`Car name`); inputVal=car.name; errorText=i18n`Name is required` };
+    noti.data = inputData;
+    let button = Button{
+        text=i18n`Ok`;
+        action = ( button ) => { 
+            if (inputData.inputVal)
+                renameDevice( car.swid, inputData.inputVal ); 
+        };
+        enabled := inputData.inputVal;
+    };
+    noti.addLine(i18n`Please enter a name!`)
+    .setOverlay()
+    .setLayout(frMessageboxWithInput)
+    .addIcon( "simple_car.svg" )
+    .addButton( new Button( {text:i18n`Cancel`, style:@info} ))
+    .addButton( button );
+    noti.show();
+}    
+
+export <fragment frUserProfile class=main, flexible, vertical, flex extends=frUserScreenBase>
+    own {
+        let baseList = userDataList;
+        let device = ( headUnit.device ?? undef );
+        let titleDataList = ( device ? [
+            { field: i18n`Free space:`, data: (fmt(i18n`{0} of {1}`, formatSize(headUnit.freeDiskSize ?? 0 ), formatSize(headUnit.diskSize ?? 0 )))},
+            { field: i18n`Last sync:`, data: ( fmt(`{:datetime|${languages.dateFormat}}`, device?.lastSyncDate ?? {} ))}
+        ] : undef );
+        let logged = (isAccessTokenValid(currentUser.token));
+        let mainTitle = ( logged ? ( currentUser.infosReady ? currentUser.infos.username ?? "" : i18n`Unable to connect to the server.` ) : "" );
+        let subTitle = ( device ? (headUnit.device?.customName ?? headUnit.lastConnectedDevice?.customName) : "" );
+    }
+</fragment>

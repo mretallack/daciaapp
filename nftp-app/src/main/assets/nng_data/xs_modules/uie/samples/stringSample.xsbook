@@ -1,0 +1,147 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# String samples"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## replace/replaceAll",
+        "",
+        "Strings have `replace` and `replaceAll` method that replace the first or all occurence of a string or regexp pattern.",
+        "",
+        "Furthermore it can be called via `string.replace` or `string.replaceAll` methods. It has the advantage that the first parameter is also converted to string"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import re from \"system://regexp\"",
+        "{}",
+        "$log(\"alma korte banan\".replace(\"alma\",\"eper\"));",
+        "$log(\"alma korte banan\".replaceAll(\" \",\"_\"));",
+        "$log(\"14242\".replace(42,99));",
+        "$log(string.replace(@almafa, @alma, @korte)); // even the input to be replaced is converted to string via string.replace",
+        "$log(string.replace(@almafa, re`a.*ma`, @korte));",
+        "$log('Apples are round, and apples are juicy.'.replace(re(\"apples\", \"gi\"), 'oranges')); // 'oranges are round, and oranges are juicy.'"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "replacement string can refer to the matched string or it can be a function generating replacement"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "$log(\"The quick brown...\".replace(\"quick\", \"($&)\"));",
+        "$log(\"albatrosz\".replace(\"bat\", m => m.toUpperCase())); // \"alBATrosz\""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "regexp replacement can reference to groups. The replacement function gets the regexp match object"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "convert(m) {`${int((int(m[1]) - 32) * 5/9)}C` };",
+        "const reF = re`(-?\\d+(?:\\.\\d*)?)F\\b`; // captruing group name (?<name>pattern)",
+        "f2c(str) { string.replace(str, reF, convert) }",
+        "f2c_all(str) { string.replaceAll(str, reF, convert) }",
+        "",
+        "{}",
+        "$log('John Smith'.replace(re`(\\w+)\\s(\\w+)`, \"$2, $1\")); // \"Smith, John\"",
+        "$log('John Smith'.replace(re`(\\w+)\\s(\\w+)`, m => m.substitute(\"$2, $1\")));",
+        "$log(f2c_all(\"fagypont 32F testho 100F 0F akarmi\"));",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import re from \"system://regexp\" // maybe suggest import of regexp for re so usual default import suggestion",
+        "{}",
+        "$log(re`((x)?(,))`.exec(\", a, b, c,\")); // should return undef for unmatched (x) and indices is unset?"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import re from \"system://regexp\"",
+        "{}",
+        "$log(string.split(\"ab\", re`a*`));",
+        "$log(string.split(\"ab\", re`a*?`));",
+        "$log(string.split(\"A<B>bold</B>and<CODE>coded</CODE>\", re`<(\\/)?([^<>]+)>`)); // 1. 7 should be undefined"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "$log(\", a, b, c,\".length);",
+        "$log(re`((x)?(,))`.exec(\", a, b, c,\")) // should be , , undefined ,indices 2 undefined"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "$log(re`(a|(bc))\\g2(?C1)`.exec(\"bcbc\").matches)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "$log(...Iter.map(re`[a-z]?`.matchAll(\"almafa\"), _=>`\"${_[0]}\"`) )"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import re from \"system://regexp\"",
+        "{}",
+        "re`x?,`.length"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {toUpperCase,toLowerCase, toTitleCase} from \"system://string.normalize\"",
+        "{}",
+        "$log(toUpperCase(\"alma\",\"en\"));",
+        "// aB<capital sigme>iI<small dotless i><capital dotted I> <sharp s> <small lig. ffi><small final sigma><small sigma><capital sigma>",
+        "const str = \"aB\\u03a3iI\\u0131\\u0138 \\xdf \\ufb03\\u03c2\\u03c3\\u03a3\";",
+        "$log(str, str.toUpperCase());",
+        "$log(toUpperCase(str,@en));",
+        "$log(toUpperCase(str,@tr));",
+        "$log(toLowerCase(str,@en));",
+        "$log(toLowerCase(str,@tr));",
+        "$log(toTitleCase(str,@en));",
+        ""
+      ]
+    }
+  ]
+}

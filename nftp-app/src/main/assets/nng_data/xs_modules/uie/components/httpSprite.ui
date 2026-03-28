@@ -1,0 +1,86 @@
+import * as httpClient from "system://nng.networking.http.Client"
+import {image} from "system://ui.types"
+
+/**
+* Component for representing an image or an mjpeg stream from http
+* Because of the includeChildren you can insert any widget to the animated sprite
+* @param src the url of the image or mjpeg stream
+* @param running shows that http is being retrived or mjepn animation is running
+**/
+export default
+<component httpSprite layout=@flex defaults={keepWhileLoading:false}>
+    own {
+        export let src="";
+        export let running=false;
+        export let loading=false;
+        set running(isRunning) {
+            if (isRunning == running) return;
+            if (running) startAnim(); else stopAnim(); 
+        }
+        onChange src() {
+            startAnim();
+        }
+        //@dispose
+        let httpSubs;
+        let numFrames=0;
+
+        onError(reason) {
+            console.log("Error displaying", src, " after ",numFrames,". Respone ", reason);
+            httpSubs = undef;
+            running = false;
+            loading = false;
+
+        }
+        noMoreFrames() {
+            console.log("Finished playing frames for ", src);
+            httpSubs = undef;
+            loading = false;
+        }
+        onNextHttpRes(response) {
+            loading = false;
+            ++numFrames;
+            if (let b = response?.body) {
+                let img = new image(b);
+                if (img.valid)
+                    fragment.contents.img = img;
+                else
+                    console.error("Invalid image from", response);
+            }
+            else
+                console.error("Response without body", response)
+        }
+        startAnim() {
+            if (!fragment.head.visible || !fragment?.contents)
+                return;
+            if (httpSubs)
+                httpSubs.cancel();
+            numFrames = 0;
+            if (!src) {
+                loading = false;
+                running = false;
+                fragment.contents.img = undef;
+                return;
+            }
+            if (!attributes?.keepWhileLoading)
+                fragment.contents.img = undef;
+            running = true;
+            loading = true;
+            console.log("Starting playback for ", src);
+            var req = httpClient.createRequest(src);
+            req.headers.set("Accept", "multipart/x-mixed-replace, image/*");
+            httpSubs = req.subscribe(onNextHttpRes, onError, noMoreFrames);
+        }
+        stopAnim() {
+            if (httpSubs)
+                httpSubs.cancel();
+            httpSubs = undef;
+            running = false;
+        }
+
+    }
+    <sprite contents  valign="top" img=undef attributes={default:true}
+           onShow() { if (this.visible) startAnim()} 
+           onHide() { stopAnim()}>
+        <includeChildren />
+    </sprite>
+</component>

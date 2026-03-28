@@ -1,0 +1,735 @@
+import alert from "./components/alert.ui"
+import { dropMenu }  from "./components/dropMenu.ui"
+import { app, yellowStorage } from "./app.xs"
+import { frListCardBase } from "./app.ui"
+import { dismissable } from "./components/dismissable.ui"
+import { headUnit } from "./toolbox/connections.xs"
+import { from, concat, addProp, map, filter as filterList} from "system://list.transforms"
+import { keys, values, entries, dispose } from "system://core"
+import { all, any, seq, chain, filter,reduce } from "system://itertools"
+import { Toast } from "~/src/components/toasts.xs"
+import { Image } from "./utils/imageCache.xs"
+import {list, state, controller, Map, date, odict, Set} from "system://core.types"
+import {removeFilesFromDevice} from "./toolbox/contentManagament.xs"
+import {} from "./profile/profile.nss.xs"
+import * as ltr from "system://list.transforms"
+import {packageManager, PackageDownloader} from "./toolbox/packages/packageModel.xs"
+import {contentsOfView, selectedContentsOfView, PackageView, otherFilesStr, packageSorters, PackageSort} from "./toolbox/packages/packageView.xs"
+import {contentDb} from "./toolbox/packages/packageAndContent.xs"
+import {Messagebox, Button, messageBoxController} from "~/src/components/messageboxes.xs"
+import { contentCard } from "./components/contentCard.xs";
+import { packageSelector, formatSize, tSelectForRemove } from "./components/packageSelector.xs";
+import {frOverlay} from "./profile/user.ui"
+import {@restorePos} from "uie/util/listState.xs"
+import {fmt} from "fmt/formatProvider.xs"
+import {} from "./maps.nss.xs"
+import { i18n, translate } from "system://i18n"
+import { map as funcMap } from "system://functional"
+import {condition,transformOnChange} from "./utils/util.xs"
+import {getUsableSpace, tagMapping} from "./utils/box.xs"
+import {banner, getBanner} from "~/src/components/banner.xs"
+import {transferSelection} from "./toolbox/packages/transferSelection.xs"
+import * as networkStatus from "~/src/toolbox/networkStatus.xs"
+import {trackEvent} from "analytics/analytics.xs"
+import {languages} from "./utils/languages.xs"
+import {gaSelectedEntries} from "./service/googleAnalytics.xs"
+
+/// Remaining tasks related for displaying and controlling package managament
+/// =================================================================
+/// - when all fragments are ready with the new design delete the old implementations 
+/// - empty contents for all three tabs, based on the design
+
+/// packages which aren't fully downloaded
+// export const downloadingPackages = ltr.filter(packageManager.packages, p => !p.fullyDownloaded).build();
+// export const notUploadedPackages = ltr.filter(packageManager.packages, p => !p.transferred).build();
+export const data = object{
+	transferSession;
+	selectedPackage;
+};
+
+const headerElement = new list({type: @header});
+
+addTag(element){ 
+	if ( !tabList[ mapsViewModel.selectedTabIndex ].filters.includes( element ) ){
+		let lst = tabList[ mapsViewModel.selectedTabIndex ].filters.copy();
+		lst.push(element); 
+		tabList[ mapsViewModel.selectedTabIndex ].filters = lst;
+	}
+	packageManager.packagesChanged++ 
+}
+
+tagFilterFn( element ){
+	reduce((acc,tag)=>{acc && element.tags.includes(tag) }, true, tabList[ mapsViewModel.selectedTabIndex ].filters ?? [] );
+}
+
+tagRemoveFilter( tag ){
+	let tagfilters = tabList[ mapsViewModel.selectedTabIndex ].filters;
+	if ( !tagfilters ) return;
+	if ( let idx = tagfilters.indexOf( tag ); idx >=0 ) {
+		tabList[ mapsViewModel.selectedTabIndex ].filters = tagfilters.toSpliced( idx, 1 );
+	}
+	packageManager.packagesChanged++;
+}
+
+<template tTagFilter class=flexible, horizontal, smallPaddingX, smallPaddingY, smallMarginRight >
+	<sprite class=(@bg, @tag, item) />
+	<text class=(item, @h2) text=(tagMapping[item]) />
+	<sprite class=(@icon, @small, item) img="close.svg" paddingLeft=8 onRelease(){ tagRemoveFilter(item) }/>
+</template>
+
+<template tMapsHeader class=flexible, vertical, headerTemplate boxAlign=@stretch flex=1>
+	own{
+		let sorts = odict {
+			date = do{ tabList[ mapsViewModel.selectedTabIndex ].sort == PackageSort.dateDesc ? @Desc : @Asc };
+			name = do{ tabList[ mapsViewModel.selectedTabIndex ].sort == PackageSort.nameDesc ? @Desc : @Asc };
+			size = do{ tabList[ mapsViewModel.selectedTabIndex ].sort == PackageSort.sizeDesc ? @Desc : @Asc };
+		};
+		let currentSort = do{ tabList[ mapsViewModel.selectedTabIndex ].sort };
+		let sizeSortVisible = false;
+		let dateSortVisible = false;
+
+		setIcon( key, negate=true ) {
+			let newDir;
+			if ( negate )
+				newDir = sorts[ key ] == @Asc ? @Desc : @Asc;
+			else
+				newDir = @Asc;
+			
+			sorts[ key ] = newDir;
+		}
+	}
+	<includeChildren/>
+
+	<group class=flexible, horizontal boxAlign=@stretch>
+		<group class=flexible, vertical boxAlign=@stretch>
+			<includeChildren filter=".beforeSort" />
+		</group>
+		<spacer flex=1/>
+		<sprite class=( @icon, @normal, @mapsHeaderIcon,
+			( [PackageSort.sizeAsc, PackageSort.sizeDesc ].includes( currentSort ) ? '':  @sortOpaque  ))
+			img=( sorts.size == @Asc ? "sort_by_size_down.svg" : "sort_by_size_up.svg")
+			visible=( sizeSortVisible )
+			onRelease(){
+				if ( PackageSort[ 'size'+sorts.size ] == currentSort )
+					setIcon( @size );
+
+				setIcon( @date, false );
+				setIcon( @name, false );
+
+				const sortBy = PackageSort[ 'size'+sorts.size ];
+				param.sortedView.changeSorter( packageSorters[ sortBy ] );
+				tabList[ mapsViewModel.selectedTabIndex ].sort = sortBy;
+				currentSort = sortBy;
+			}/> 
+		<sprite class=(  @icon, @normal, @mapsHeaderIcon,
+			( [PackageSort.dateAsc, PackageSort.dateDesc ].includes( currentSort ) ? '':  @sortOpaque  ))
+			img=( sorts.date == @Asc ? "sort_by_date_down.svg" : "sort_by_date_up.svg")
+			visible=( dateSortVisible )
+			onRelease(){
+				if ( PackageSort[ 'date'+sorts.date ] == currentSort )
+					setIcon( @date );
+
+				setIcon( @size, false );
+				setIcon( @name, false );
+
+				const sortBy = PackageSort[ 'date'+sorts.date ];
+				param.sortedView.changeSorter( packageSorters[ sortBy ] );
+				tabList[ mapsViewModel.selectedTabIndex ].sort = sortBy;
+				currentSort = sortBy;
+			}/> 
+		<sprite class=( @icon, @normal, @mapsHeaderIcon,
+			( [PackageSort.nameAsc, PackageSort.nameDesc ].includes( currentSort ) ? '' :  @sortOpaque  ))
+			img=( sorts.name == @Asc ? "sort_by_name_down.svg" : "sort_by_name_up.svg")
+			onRelease(){
+				if ( PackageSort[ 'name'+sorts.name ] == currentSort )
+					setIcon( @name );
+
+				setIcon( @size, false );
+				setIcon( @date, false );
+
+				const sortBy = PackageSort[ 'name'+sorts.name ];
+				param.sortedView.changeSorter( packageSorters[ sortBy ] );
+				tabList[ mapsViewModel.selectedTabIndex ].sort = sortBy;
+				currentSort = sortBy;
+			}/>
+	</group>
+</template>
+
+<template tOwnHeader class=flexible, vertical, headerTemplate, mainContentPadding boxAlign=@stretch flex=1 extends=tMapsHeader>
+	own {
+		let dateSortVisible = true;
+		let filters = (tabList[ mapsViewModel.selectedTabIndex ].filters??[]);
+	}
+	<text class=paragraph, twoline, beforeSort text=i18n`Download your licensed items and free updates to phone!` visible=( !filters.length )/>
+	<group class=flexible, horizontal, mapsTagsPadding, beforeSort visible=( filters.length )>
+		<lister model=([...filters]) template=(tTagFilter) />
+	</group>
+</template>
+
+class DismissableManager{
+	@dispose workingList = new list;
+	currentIndex;
+
+	constructor( list ){
+		this.workingList = list;
+	}
+	
+	setItemToEdit( item ){
+		let idx = this.workingList.indexOf( item );
+		if ( idx != -1 && this.currentIndex != idx){
+			this.currentIndex = idx;
+		}
+	}
+
+	reset(){
+		this.currentIndex = undef;
+	}
+}
+
+showWifiAlert(){
+	trackEvent("noWifiConnectionAtDownload");
+	console.log("[Maps] Connect to Wi-Fi to begin downloading.");
+	let noti = new Messagebox;
+	noti.addLine( i18n`Connect to Wi-Fi to begin downloading.` )
+	.setOverlay()
+	.addIcon( "Network.svg" )
+	.addButton( new Button({ text : i18n`Next` }) );
+	noti.show();
+}
+
+noFreeSpaceOnPhoneNoti(){
+	trackEvent("noFreeSpaceOnPhone");
+	console.log("[Maps] Display noFreeSpaceOnPhone noti ");
+	let noti = new Messagebox;
+	noti.addLine( i18n`Not enough free space on phone!` )
+	.setOverlay()
+	.addIcon( "sadface.svg" )
+	.addButton( new Button({ text : i18n`Ok` }) );
+	noti.show();
+}
+
+meteredConnectionInDownloadBanner(){
+	let banner = getBanner(@meteredConnectionInDownload);
+	banner.show( i18n`Connect to Wi-Fi to begin downloading.`, { level: @warning } );
+}
+
+<template tOwnedPackage class=flexible, vertical w=100%>
+	own {
+		let imageURL := item.package.snapshot.image;
+		let headerImg = (imageURL ? new Image( imageURL, imageURL) : undef );
+		let sizeOfSelectionToDownload := item.downloadView?.sizeOfSelectionToDownload;
+		let downloader := item.downloader;
+		let downloadView := item.downloadView;
+
+		computeProgress() {
+			const downloader = item.downloader;
+			if (!downloader)
+				return 0;
+			return downloader.progress * 100 / downloader.total;
+		}
+		
+		startDownload() {
+			trackEvent("start_download", {packageCode: item.package.packageCode});
+			console.log("[Maps] Start downloading package. PackageCode: ", item.package.packageCode, ", name: ", item.package.name );
+			if ( getUsableSpace() > sizeOfSelectionToDownload ){
+				let it = packageManager.packages.find( el => el.package.packageCode == item.package.packageCode );
+				const downloader = new PackageDownloader( it );
+				let netStatus = networkStatus.getStatus();
+				if ( netStatus.metered && yellowStorage.wifiOnly ){
+					showWifiAlert();
+				}
+				downloader.startDownloadingByUser(selectedContentsOfView(downloadView?.entries, {skipDownloaded: true}));
+			} else {
+				noFreeSpaceOnPhoneNoti();
+			}
+		}
+
+		cancelDownload() {
+			trackEvent("cancel_download", {packageCode: item.package.packageCode});
+			console.log("[Maps] Cancel downloading package. PackageCode: ", item.package.packageCode, ", name: ", item.package.name );
+			item.downloader.cancelDownloading();
+		}
+	}
+
+	<contentCard class=extraLargeMarginX title=(item.name) showExpander=(downloadView?.entries?.size > 0) expanded<=>downloadView.expanded
+								showFooter=true 
+								headerImg=(headerImg?.img ?? @unset)
+								subtitle=( item.package.snapshot.contentRelease ? fmt(i18n`Purchased: {0}`, fmt(`{:datetime|${languages.dateFormat}}`, new date( item.package.snapshot.contentRelease * 1000L ))) : i18n`Unknown`  + "\n" + item.package.subsType )
+								description=( item.package.snapshot.description.shortDescription ) 
+								tags=(item.tags) 
+								expire=( item.package.right.expire ? fmt(i18n`Valid until: {0}`, fmt(`{:datetime|${languages.dateFormat}}`, new date( item.package.right.expire * 1000L ))) : 0 )
+								tagAction(element){ addTag(element) }
+	>
+								// todo: subtitle could be package validity, what about description?
+		<packageSelector class=detail packageView=(downloadView) selectDownloaded=true enable=(!downloader)/>	
+        <button class=cardFooter,right, action text=(formatSize(downloadView.downloadSizeForDisplay)) enable=( !packageManager.packagesAreOutdated && sizeOfSelectionToDownload > 0) 
+				visible=(!downloader) onRelease=startDownload >
+			<sprite class=icon, downloadToPhone />
+		</button>
+		<button class=cardFooter,right,action,primary text=i18n`Cancel` visible=(downloader) enable=(!downloader.canceled &&  !packageManager.packagesAreOutdated) onRelease=cancelDownload >
+			<sprite class=icon, downloadToPhone />
+		</button>
+		<progress class=downloadToPhone,dividerArea max=100 progress=(computeProgress() ?? 0) visible=( downloader) />
+		<group class=cardFooter,left,download,area,flexible,vertical visible=(downloader) >
+			<text class=paragraph text = i18n`Downloading...`/>
+			<text class=button text=(fmt(i18n`{0}%`,computeProgress())) />
+		</group>
+	</contentCard>
+</template>
+
+<fragment frOwnedNew class=flexible,vertical boxAlign=@stretch flex=1 extends=frListCardBase
+	onShow(){
+		setBanner()
+	}
+
+	onHide() {
+		dispose( sortedView );
+		dispose( netStatusSubs );
+	}
+>
+	own {
+		let initialSort = do{ tabList[ mapsViewModel.selectedTabIndex ].sort };
+		getTags( item ){
+			let tags = []; 
+			if (item.package?.snapshot?.isOSM) { tags.push(@osm) }
+			if (item.package?.updated) { tags.push(@update) }
+			return tags;
+		}
+		let viewWithTags = ( from( packageManager.packages ).map( item => @transparent object extends item { tags = getTags( item ) } ).build() );
+		let sortedView = ( transformOnChange( { inputList: viewWithTags, sorterFn: packageSorters[ initialSort ], observeFn: (_=> packageManager.packagesChanged), filterFn: tagFilterFn } ));
+		let listModel := from( headerElement ).concat( sortedView.list ).build();
+		let listVisible:= packageManager.packages.size > 0;
+		let loading = ( packageManager.updateRightsInProgress || headUnit.connectionInProgress );
+		let emptyVisible = ( !listVisible );
+		let emptyImage = "toPhone.svg";
+		let emptyText = i18n`In this page you can download your licensed items to this phone.`;
+		let netStatusSubs = ( networkStatus.subscribe( _ => { setBanner() } ) );
+
+		async createView() {
+			// todo: probably package updates should be performed on startup, but this view should show a loading or
+			//       similar progress indicator while this is still in progress, and only create the download view after that.
+			//       We could have modes for packagemanager where newly created packages create different views automatically
+			//       (ex. when a new package is added, and owned view is selected the download view could be created).
+			//       But we could create the download view later as well (when clicking download, or viewing package details)
+			for ( let p in packageManager.packages )
+				packageManager.createDownloadPackageView(p);
+		}
+
+		setBanner(){
+			let netStatus = networkStatus.getStatus();
+			if ( !netStatus.internet || netStatus.metered && yellowStorage.wifiOnly ){
+				meteredConnectionInDownloadBanner();
+			}
+			else {
+				getBanner(@meteredConnectionInDownload).hide();
+			}
+		}
+
+		constructor() {
+			createView();
+		}
+	}
+
+	<group class=flexible,vertical flex=1 visible=( !loading && !emptyVisible )>
+		<sprite class=bg, panel/>
+		<banner banner=(getBanner(@meteredConnectionInDownload)) />
+		<banner banner=(getBanner(@purchase)) />
+		@restorePos
+		<listView list flex=1 model=( listModel ) template=tOwnedPackage
+			param={ sortedView }
+			visible=( listVisible ) 
+			templateType(){ item?.type == @header ? tOwnHeader : @default }>
+			<wheel/>
+			<scroll/>
+		</listView>
+	</group>
+</fragment>
+
+
+/// viewModel for the maps screen
+class MapsVm {
+	selectedTabIndex = 0;
+	savedListviewOffsets = new Map();
+
+	saveListViewOffset(listView) {
+		// NOTE: definitionId is unique for each diffrent listview defined in one app, so the real id isn't needed
+		this.savedListviewOffsets.set(listView.definitionId, #{ firstItem: listView.firstItem, firstItemOffset :listView.firstItemOffset})	
+	}
+	
+	restoreListViewOffset(listView) {
+		const saved = this.savedListviewOffsets.get(listView.definitionId) ?? undef;
+		if (!saved)
+			return;
+		listView.showItem(saved.firstItem, saved.firstItemOffset)
+	}
+}
+
+export MapsVm mapsViewModel;
+
+<template tOnPhoneHeader class=flexible, vertical, headerTemplate, mainContentPadding boxAlign=@stretch flex=1 extends=tMapsHeader>
+	own {
+		let filters = (tabList[ mapsViewModel.selectedTabIndex ].filters??[]);
+	}
+	<text class=paragraph, twoline, beforeSort text=(i18n`Transfer your downloaded items to your car!`) visible=( !filters.length )/>
+	<group class=flexible, horizontal, mapsTagsPadding, beforeSort visible=( filters.length )>
+		<lister model=([...filters]) template=(tTagFilter) />
+	</group>
+</template>
+
+<template tOnPhoneCard class=flexible, vertical w=100%>
+	own {
+		let view := item.transferView ?? new PackageView(); // // may happen that view gets droped while refreshing
+		let sizeOfSelection := view.sizeOfSelection;
+		let device := headUnit.device ?? headUnit.lastConnectedDevice;
+		let imageURL := item.package.snapshot.image;
+		let headerImg = (imageURL ? new Image( imageURL, imageURL) : undef );
+		let osmIsEnabled = do { SysConfig.get("yellowBox", "enableOSM", true) };
+		let enableAddToTransfer = ( !packageManager.packagesAreOutdated && ( osmIsEnabled || !device.hasOSM ) && sizeOfSelection > 0 && !item.downloader && view.enabled );
+		addToTransfer() {
+			transferSelection.addEntries(item.package, view.entries);
+		}
+		showRemoveDialog(item) {
+			data.selectedPackage = item;
+			let state = new state({use: (frOverlay, frRemoveFromPhone), cancellable: true});
+			messageBoxController.next(state);
+		}
+	}
+	<contentCard class=extraLargeMarginX title=(item.name) showExpander=(view.entries.size > 1) expanded<=>view.expanded
+								showFooter=true 
+								alert=i18n`This package is not compatible with the ones you have already selected to transfer`
+								alertVisible=(!view.enabled)
+								tags=(item.tags)
+								tagAction(element){ addTag(element) }
+								headerImg=(headerImg?.img ?? @unset)> 
+		<packageSelector class=detail packageView=(view) selectTransferred=true enable=(view.enabled)/>	
+		
+		<sprite class=iconButton, cardFooter, left img="trash.svg" enable=(!packageManager.packagesAreOutdated && !item.downloader) onRelease() { showRemoveDialog(item); } />
+        <button class=cardFooter,right, action text=(item.downloader ? i18n`Downloading...` : i18n`Add to transfer`)
+				enable=( enableAddToTransfer ) 
+				visible=(!view.transferred) // todo: could use item.transferred, but that marks whether the whole package is transferred (including non-downloaded)
+											// maybe there could be other property which marks downloaded items transferred
+				onRelease=addToTransfer >
+		</button>
+		
+	</contentCard>
+</template>
+
+<fragment frRemoveFromPhone class=main,extraLargePadding,flexible,vertical valign=@center onShow=createView>
+	own {
+		let package := data.selectedPackage;
+		let view := package.removeView ?? new PackageView(); // may happen that view gets droped while deleting
+		let sizeOfSelection := view.sizeOfSelection;
+		createView() {
+			packageManager.createRemovePackageView(package);
+		}
+		initDeleteContents() {
+			trackEvent("delete_content", #{
+				packageCode: package.package.packageCode, 
+				entries: gaSelectedEntries(view.entries),
+			});
+			console.log("[Maps] Remove contents from phone." );
+			messageBoxController.prev();
+			const allSelected = view.areAllEntriesSelected();
+			const checkResult = packageManager.checkOverlappingContentsForRemoval(package, selectedContentsOfView(view.entries));
+			const currentPack = package;
+			if ( checkResult.overlappingCountries.length ){
+				let noti = new Messagebox;
+				noti.addLine(i18n`The maps below can also be found in other installed map packages. Please confirm to delete the following duplicate items:`)
+				.addLine( funcMap( e=>translate(e), checkResult.overlappingCountries ).join(", "))
+				.setOverlay()
+				.addIcon( "msgbox_warning.svg" )
+				.addButton( new Button({ text : i18n`Skip deleting`, action: _=> {
+						const toRemove = checkResult.toRemove;
+						packageManager.deleteContents( allSelected, currentPack, toRemove ); 
+				}}) )
+				.addButton( new Button({ text : i18n`Delete`, style:@info, action: _=> { 
+						const toRemove = Set.from( chain( checkResult.toRemove, checkResult.overlappingMd5s ) );
+						packageManager.deleteContents( allSelected, currentPack, toRemove ); 
+				} }) );
+				noti.show();
+			}
+			else {
+				packageManager.deleteContents( allSelected, currentPack, checkResult.toRemove );
+			}
+		}
+
+		exit() { messageBoxController.prev(); }
+	}
+		<group class=flexible,vertical maxH=640>
+			<sprite class=fill,bg />
+			<text title class=h2,center,extraLargePadding align=@center text=(fmt(`Deleting the\n"{0}"`, package.name)) />
+			<vbox class=scrollable,extraLargeMarginY>
+				<packageSelector class=detail, extraLargePaddingX packageView=(view) entryTemplate=tSelectForRemove keepMandatory=true />	
+				<wheel />  
+				<scroll />
+			</vbox>
+			<hbox class=extraLargeMarginX, extraLargeMarginY boxAlign=@bottom>
+				<button class=action,secondary text=i18n`Cancel` onRelease() { exit(); } />	
+				<spacer flex=1 />
+				<button class=action text=i18n`Delete` enable=(sizeOfSelection > 0) onRelease=initDeleteContents />	
+			</hbox>
+		</group>
+</fragment>
+
+<template tTransferPackage class=flexible,vertical,mainPaddingY w=100% enable=(transferSelection.packages.size)>
+	<group class=flexible,horizontal>
+		<text class=bd text=(item.name) flex=1 />
+		<text class=bd, mainMarginX text=(formatSize(reduce(item.entries, (sum,e)=>sum+=e.size, 0L))) />
+		<sprite class=icon, normal img = "close.svg" onRelease() { 
+			transferSelection.removePackage(item);
+		} />
+	</group>
+	<text class=darkgrey,mainMarginX,threeline text=(filterList(item.entries, e=>e.name!=string(otherFilesStr)).map(e=>translate(e.name)).build().join(", ")) />
+</template>
+
+<fragment frOnPhoneNew class=flexible, vertical boxAlign=@stretch flex=1 extends=frListCardBase 
+	onHide() {
+		dispose( sortedView );
+	}
+>
+	own {
+		let initialSort = do{ tabList[ mapsViewModel.selectedTabIndex ].sort };
+		let viewWithTags = ( from( packageManager.packages ).map( item => @transparent object extends item { tags = item.package?.snapshot?.isOSM  ? [@osm] : [] } ).build() );
+		let sortedView = ( transformOnChange( { inputList: viewWithTags, sorterFn: packageSorters[ initialSort ], observeFn: (_=> packageManager.packagesChanged), filterFn: tagFilterFn } ));
+		/// packages which have some contents downloaded (not fully downloaded)
+		let downloadedPackages := ( ltr.filter( sortedView.list, p => p.downloadedSize > 0 && p.transferView).build());
+		let showTransferElements <=> transferSelection.showTransferElements;
+		let listModel := from( headerElement ).concat( downloadedPackages ).build();
+		let emptyVisible = ( !downloadedPackages.length );
+		let emptyImage = "toCar.svg";
+		let emptyText = i18n`From here you can transfer your downloaded items to your car.`
+		let osmIsEnabled = do { SysConfig.get("yellowBox", "enableOSM", true) };
+		let noSpaceOnCarAlert := ( headUnit?.messenger?.setupCompleted && !transferSelection.isUpdatePossible )
+	}
+	<group class=flexible,vertical flex=1 visible=( !emptyVisible )>
+		<sprite class=bg, panel/>
+		@restorePos
+		<listView list flex=1 model=( listModel ) template=tOnPhoneCard
+			param={ sortedView }
+			templateType(){ item?.type == @header ? tOnPhoneHeader : @default }>
+			<wheel/>
+			<scroll/>
+		</listView>
+		<sprite class=fill,bg,faded visible=(showTransferElements && transferSelection.packages.size) 
+			onRelease() { showTransferElements = false; } />
+	</group>
+	<vbox transferSelectionPanel class=extraLargePadding visible=(transferSelection.packages.size)>
+		<sprite class=bg />
+		<sprite class=divider />
+ 		<hbox boxAlign=@stretch onRelease() { invert(showTransferElements) } checked=(showTransferElements) >
+			<text class=medium text=(fmt(i18n`{0} items to transfer`, transferSelection.packages.size)) flex=1/>
+			<text class=medium, bd text=(formatSize(transferSelection.size)) />
+			<sprite class=chevron, up, icon, small boxAlign=@bottom/>
+		</hbox>
+		<sprite class=(@itemDivider, noSpaceOnCarAlert ? @alert : undef) />
+		<text class=error, notEnoughSpace text=i18n`Not enough free space on car!` visible=(noSpaceOnCarAlert)/>
+		<button class=action boxAlign=@stretch text=(i18n`Transfer to car`)
+				onRelease(){ initTransfer() }  enable=( !packageManager.packagesAreOutdated && headUnit.connected && !noSpaceOnCarAlert && ( osmIsEnabled || !headUnit.device.hasOSM )) >
+			<sprite class=icon, normal img="toCar.svg" />
+		</button>
+		
+		<group transferElements class=flexible, vertical, mainPaddingX onRelease() {/* here for being mouse target */} visible=(showTransferElements)>
+			<sprite class=bg />
+			<lister model=(transferSelection.packages.values) template=tTransferPackage visible=(transferSelection.packages.size <= 4) />
+			<listView model=(transferSelection.packages.values) template=tTransferPackage visible=(transferSelection.packages.size > 4) >
+				<wheel/>
+				<scroll/>
+			</listView>
+		</group>
+	</vbox>
+</fragment>
+
+
+export showNonCompatibleNoti( nonCompatible ){
+	let noti = new Messagebox;
+	noti.setSecondLineStyle(@secondLine, @secondLinePaddings);
+	noti.addLine(i18n`You can’t use maps from different providers together at the same time on the same device!`)
+	.addLine(i18n`Transfer this map will remove the installed maps from your device!`)
+	.setId(@transferAndHUAreNotCompatible)
+	.setOverlay()
+	.addIcon( "msgbox_warning.svg" )
+	.addButton( new Button({ text : i18n`Continue`, action: _=>transferSelection.startTransfer( nonCompatible )}) )
+	.addButton( new Button({ text : i18n`Cancel`, style:@info }) );
+	noti.show();
+}
+
+initTransfer(){
+	const nonCompatible = transferSelection.getNonCompatibleFiles();
+	if ( nonCompatible.length ){
+		showNonCompatibleNoti( nonCompatible );
+	}
+	else 
+		transferSelection.startTransfer();
+}
+
+async refresCont(){
+	await headUnit.device?.getContentsFromHU();
+	packageManager.refresh();
+}
+
+async onDeleteCountry( item ){
+	await condition( _ => !packageManager.updateRightsInProgress );
+	// check rights
+	let hasRight = false;
+	let packageCode;
+	for ( let p in packageManager.packages ){
+		if ( funcMap(e=>"_"+e.igoCountryCode, p.package.contents).includes( item.name ) ){
+			hasRight = true;
+			packageCode = p.package.packageCode;
+			break;
+		}
+	}
+	if ( !hasRight ){
+		let noti = new Messagebox;
+		noti.setFirstLineStyle(@msgboxFirstLineWithSeparator);
+		noti.setSecondLineStyle(@secondLine);
+		noti.setThirdLineStyle(@thirdLine);
+		noti.separatorVisible = true;
+		noti.addLine(i18n`Warning!`)
+		.addLine(i18n`Deleting map file(s) is permanent. You cannot restore deleted map files without making a new purchase.`)
+		.addLine(i18n`Are you sure you want to delete?`)
+		.setOverlay()
+		.addIcon( "msgbox_warning.svg" )
+		.addButton( new Button({ text : i18n`Cancel` }) )
+		.addButton( new Button({ text : i18n`Delete`, action: _=>deleteCountry(item), style:@info }));
+		noti.show();
+	}
+	else 
+		deleteCountry( item, packageCode );
+}
+
+export async deleteCountry( item, packageCode){
+	// todo: remove from fileDB on device! 
+	trackEvent("delete_country", #{ packageCode, entries: [item.name] });
+	console.log("[Maps] Remove country from device: ", item.name );
+	await removeFilesFromDevice( item.files );
+	await refresCont();
+	let noti = new Toast( fmt(i18n`Content removed: {0}`, translate(item.name) ));
+	noti.addTimeout( 3s ).setId("contentRemoved"+item.name).show();
+}
+
+<template tOnCarCard class=flexible, vertical w=100%>
+	own{
+		let osmIsEnabled = do { SysConfig.get("yellowBox", "enableOSM", true) };
+	}
+	<contentCard class=extraLargeMarginX title=(translate(item.name))
+		showFooter=true 
+		subtitle=(item.contents)
+		tags=(item.tags)
+	> // will add headerImage when country code can be mapped to a set of images...
+		<sprite class=iconButton, cardFooter, left img="trash.svg" onRelease() { onDeleteCountry(item) } enable=(headUnit.connected && ( osmIsEnabled || !headUnit.device.hasOSM ))/>
+		
+		<text class=cardFooter,right, center, medium, bd text=(formatSize(item.size)) />
+	</contentCard>
+	
+</template>
+
+<template tOnCarHeader class=flexible, vertical, headerTemplate, mainContentPadding boxAlign=@stretch flex=1 extends=tMapsHeader>
+	own{
+		let device = ( headUnit.device ?? headUnit.lastConnectedDevice );
+		let freeDiskText = ( headUnit?.freeDiskSize ? formatSize(headUnit.freeDiskSize) : undef);
+		let lastSyncDate =  (device.lastSyncDate ?? undef )
+		let lastCarName = ( device?.customName )
+		let sizeSortVisible = true;
+	}
+	<group class=flexible,vertical, largePaddingX, mediumPaddingY, onCarHeader flex=1>
+		<sprite class=bg, lightShadow, rounded />
+		<text class=h3 text=("" + i18n`Car name` + `: ${lastCarName}`) />
+		<text class=h3, beforeSort text=(fmt(i18n`Map type: {0}`, string(device.hasOSM ? i18n`NNG maps`: i18n`HERE maps`))) />
+		<text class=h3, beforeSort text=(freeDiskText ? fmt(i18n`Free space: {0}`, freeDiskText ) : i18n`Not connected`) />
+		<text class=h3, beforeSort text=(fmt(i18n`Last sync: {0}`, lastSyncDate ? fmt(`{:datetime|${languages.dateFormat}}`, lastSyncDate ) : string( i18n`Unknown` ))) />
+	</group>
+</template>
+
+<fragment frOnCarNew class=flexible, vertical boxAlign=@stretch flex=1 extends=frListCardBase
+	onHide() {
+		dispose( sortedView );
+	}
+>
+	own {
+		let initialSort = do{ tabList[ mapsViewModel.selectedTabIndex ].sort };
+		let onCarContentList := headUnit.lastConnectedDevice.onCarContentList ?? [];
+		let sortedView = ( transformOnChange( { inputList: onCarContentList, sorterFn: packageSorters[ initialSort ], observeFn: (_=> packageManager.packagesChanged) } ));
+		export let listModel := from( headerElement ).concat( sortedView.list ?? [] ).build();
+		let emptyVisible = ( !onCarContentList?.length );
+		let emptyImage = "car_connected.svg";
+		let emptyText = i18n`Here you can manage your transferred items, but first you need to connect your phone to your car.`
+	}
+	// ## header
+	// - free space on device, last sync date
+	// ## cards for contents
+	<group class=flexible,vertical flex=1 visible=( !emptyVisible )>
+		<sprite class=bg, panel/>
+		@restorePos
+		<listView list flex=1 model=( listModel ) template=tOnCarCard
+			param={ sortedView }
+			templateType(){ item?.type == @header ? tOnCarHeader : @default } >
+			<wheel/>
+			<scroll/>
+		</listView>
+	</group>
+</fragment>
+
+state stMapsTab {
+	restoreList(listView) {
+		this.listViewsToRestore ??= [];
+		this.listViewsToRestore.push(listView);
+		mapsViewModel.restoreListViewOffset(listView);
+	}
+	
+	done(ctrl)	 {
+		for (const lv in this.listViewsToRestore)
+			mapsViewModel.saveListViewOffset(lv);
+		this.listViewsToRestore = undef;
+	}
+}
+
+export const tabList = [
+	object { id= "Owned"; name= i18n`Owned`; fragment= frOwnedNew; sort= PackageSort.hasUpdateFirstThenDate; filters= [] },
+	object { id= "OnPhone"; name= i18n`On Phone`; fragment= frOnPhoneNew; sort= PackageSort.nameAsc; filters= [] },
+	object { id= "OnCar"; name= i18n`On Car`; fragment= frOnCarNew; sort= PackageSort.nameAsc; filters= [] } 
+];	
+
+export <fragment frProfile class=main, flexible, vertical>
+	own{
+		let outdatedPackagesWarning = (packageManager.packagesAreOutdated && !packageManager.updateRightsInProgress);
+		onChange outdatedPackagesWarning( newVal ){
+			if (newVal) showOutdatedPackagesWarning();
+			else getBanner( @outdatedPackages ).hide();
+		}
+		constructor(){
+			if (outdatedPackagesWarning) showOutdatedPackagesWarning();
+			tabController.changeTab( tabList[mapsViewModel.selectedTabIndex] );
+		}
+		showOutdatedPackagesWarning(){
+			getBanner(@outdatedPackages).show(i18n`Your package database is outdated. Please connect to the internet.`, {level: @warning});
+		}
+
+		export controller tabController {
+			changeTab( tab ){ 
+				if ( ( this.current.use[0] ?? undef ) != tab.fragment ) {
+					mapsViewModel.selectedTabIndex = fragment.tabs.selectedItems = tabList.indexOf( tab );
+					this.state = new stMapsTab({ use: tab.fragment });
+					console.log("[Maps] change tab to ", tab.id );
+					trackEvent("screen_view", {screen_name: tab.id, type: "mapTab"});
+				}
+			}		
+		};
+
+		<template tTab class=flexible, vertical flex=1 onRelease(){ getBanner( @purchase ).hide(); tabController.changeTab( item ) }>
+			<sprite class=bg />
+			<text class=h3, tab text=(item.name) >
+				<sprite class=tab, selectionMarker />
+			</text>
+		</template>
+
+		let device := headUnit.device ?? headUnit.lastConnectedDevice;
+	}
+
+	<group class=flexible, vertical>
+		<group mapsTab class=flexible, horizontal, mainContentPadding>
+			<lister tabs model=( tabList ) template=(tTab)/>
+		</group>
+		<group class=flexible, vertical flex=1 controller=tabController/>
+	</group>
+</fragment>

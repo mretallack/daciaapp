@@ -1,5 +1,55 @@
 # NFTP Protocol — MediaNav 4
 
+## What the Dacia Map Update App Shows Users
+
+The official Dacia Map Update app (v1.8.13) provides these user-facing features:
+
+### Connection Status
+- Header icon shows connected/disconnected state
+- Tapping the icon navigates to the "Registered Cars" list
+
+### Device/Car Information (frCarSettings screen)
+- **Custom name** — user-assigned name for the car (editable)
+- **SWID** — device identifier (Software ID)
+- **Free space / Total space** — e.g., "2.5 GB of 8 GB"
+  - Obtained via `queryInfo(@diskInfo)` → `{available, size}`
+- **Last sync date** — when device was last connected
+- **Map type** — OSM or proprietary maps
+
+### Maps Tab
+- List of available map packages with:
+  - Package name, size, date
+  - Download/update status indicators
+  - "Update available" badge when newer version exists
+- Sorting options: by name, date, or size
+- Filter by region/tags
+
+### Cart & Purchases
+- Items added for purchase
+- Voucher code redemption
+- Price display with currency
+
+### User Profile
+- Account info (username, email)
+- Registered cars list
+- Settings (language, notifications)
+
+### Data Sources
+
+The app obtains device information via these NFTP queries:
+
+| Query | Returns | Used For |
+|-------|---------|----------|
+| `queryInfo(@diskInfo)` | `{available, size}` | Free space display |
+| `queryInfo(@freeSpace)` | number | Free space for transfer calculations |
+| `queryInfo(@device)` | object | SWID, VIN, iGo version |
+| `queryInfo(@brand)` | object | Brand info |
+| `queryInfo(@fileMapping)` | object | File path mapping |
+| `queryInfo(@ls, path, #{fields})` | array | Directory listings |
+| `getFile("license/device.nng")` | bytes | Device info file |
+
+**Note**: QueryInfo now uses the correct NNG compact serialisation format (0x8d + null-terminated string). Previous attempts failed due to using the wrong encoding. See "BREAKTHROUGH: NNG Compact Serialisation" section below.
+
 ## Overview
 
 NFTP is a proprietary binary file-transfer protocol used by NNG's "Phone-Based Map Update" (PBMU / YellowTool / YellowBox) feature on MediaNav 4 head units. It is not related to standard FTP.
@@ -562,10 +612,76 @@ YellowTool app context, the lookup table is empty.
 contains all the device info we need (SWID, VIN, iGo version, APPCID). QueryInfo is only
 needed for dynamic queries like directory listings, which we can also do via GetFile if needed.
 
-**The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
-1. Discover the IDs by brute-force scanning (in progress, range 700–1500)
-2. Intercept the official app's wire traffic to capture the actual IDs
-3. Replicate the NNG runtime's symbol assignment order by tracing the `.xs` module load chain
+#### BREAKTHROUGH: NNG Compact Serialisation Uses String Identifiers (confirmed 2025-03-28)
+
+By loading the real NNG SDK on Android, initialising the engine with the full YellowBox project
+system, and using `asyncEval` to call `System.import('system://serialization').Stream(@compact)`,
+we captured the exact bytes the native runtime produces for each symbol.
+
+**Method:**
+1. Start NNG SDK engine with `project.ini` at rootPath (skin=yellowbox)
+2. Use `asyncEval` to run: `ser.Stream(@compact).add(@symbol).transfer()`
+3. Send the resulting `ArrayBuffer` over a TCP socket to a capture server
+4. Capture and hex-dump the bytes
+
+**Results — every symbol follows the same pattern:**
+
+| Symbol | Bytes | Decoded |
+|--------|-------|---------|
+| `@fileMapping` | `8d 66696c654d617070696e67 00` | 0x8d + "fileMapping" + NUL |
+| `@device` | `8d 646576696365 00` | 0x8d + "device" + NUL |
+| `@brand` | `8d 6272616e64 00` | 0x8d + "brand" + NUL |
+| `@diskInfo` | `8d 6469736b496e666f 00` | 0x8d + "diskInfo" + NUL |
+| `@freeSpace` | `8d 667265655370616365 00` | 0x8d + "freeSpace" + NUL |
+| `@ls` | `8d 6c73 00` | 0x8d + "ls" + NUL |
+| `@children` | `8d 6368696c6472656e 00` | 0x8d + "children" + NUL |
+| `@name` | `8d 6e616d65 00` | 0x8d + "name" + NUL |
+| `@size` | `8d 73697a65 00` | 0x8d + "size" + NUL |
+| `@type` | `8d 74797065 00` | 0x8d + "type" + NUL |
+| `@date` | `8d 64617465 00` | 0x8d + "date" + NUL |
+| `@error` | `8d 6572726f72 00` | 0x8d + "error" + NUL |
+| `@compact` | `8d 636f6d70616374 00` | 0x8d + "compact" + NUL |
+
+**Tag byte 0x8d decoded:**
+- Bits 0-5: `0x0d` = 13 = `TAG_ID_STRING` (IdentifierString)
+- Bit 7: `1` = modifier flag set
+- The modifier flag changes the string encoding from VLU-length-prefixed to **null-terminated**
+
+**Array encoding** (e.g. `[@fileMapping]`):
+```
+1f 01 8d 66696c654d617070696e67 00
+│  │  └── identifier: 0x8d + "fileMapping" + NUL
+│  └── VLU count: 1
+└── TAG_ARRAY_VLI_LEN (31)
+```
+
+**Why previous attempts failed:**
+1. `TAG_ID_STRING` (0x0d) with VLU-length prefix — wrong encoding, modifier bit not set
+2. `TAG_ID_SYMBOL_VLI` (0x1d) with integer IDs — completely wrong approach; the compact
+   format doesn't use integer symbol IDs at all
+3. The Java SDK's `Serializer.java` uses `IdSymbolVLI` because it operates in the Java
+   bridge layer which maps symbols to integers. The **native** `.xs` runtime's
+   `Stream(@compact)` uses string-based identifiers.
+
+**This means:**
+- Symbol IDs are irrelevant for the wire protocol when using compact serialisation
+- The entire symbol ID investigation (Ghidra decompilation, brute-force scanning, etc.)
+  was solving the wrong problem
+- QueryInfo should work by sending identifiers as `0x8d` + null-terminated string name
+- Both the serialiser and deserialiser have been updated to use this format
+
+**How `writeValue` in `core/nftp.xs` actually works:**
+```javascript
+export writeValue(writer, val) {
+    const stream = Stream(@compact);  // native serialiser with compact mode
+    stream.add(val);                  // serialises using 0x8d for identifiers
+    writer.writeBytes(stream.transfer());
+}
+```
+The `@compact` flag tells the native `Stream` to use compact encoding, which encodes
+identifiers as `TAG_ID_STRING | MODIFIER` (0x8d) with null-terminated strings. Without
+`@compact`, it would use `TAG_ID_SYMBOL` with integer IDs — but the NFTP protocol
+always uses `@compact`.
 
 #### Architecture: Native vs Script Layers (from Ghidra decompilation)
 
@@ -771,7 +887,7 @@ QueryInfo (type 4) accepts serialised keys and can return:
 - `@diskInfo` — disk size and available space
 - `@ls` with path — directory listing with fields like `@name`, `@size`, `@isFile`, `@mtimeMs`
 
-**Status**: QueryInfo is not yet working from our app. The keys must be sent as NNG symbol IDs (IdSymbolVLI, tag 29), but the correct IDs are unknown. See "QueryInfo Serialisation" section above for full details of the investigation.
+**Status**: QueryInfo now uses the correct NNG compact serialisation format (0x8d + null-terminated string identifiers). This was confirmed by capturing bytes from the real NNG SDK. Testing against the real head unit is the next step.
 
 ### Checksum Methods
 

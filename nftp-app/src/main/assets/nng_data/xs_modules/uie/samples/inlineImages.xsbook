@@ -1,0 +1,309 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Loading svg image from source, with parameters"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {loadDocumentFromBuffer} from \"system://ui.svg\"",
+        "",
+        "const shieldSource = `",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -2 24 24\" height=\"20\" width=\"20\">",
+        " \t<!--",
+        "\t<circle cx=\"10\" cy=\"10\" r=\"10\" stroke-width=\"1\" stroke=\"#FFFFFF\" fill=\"#0e8c38\" />",
+        "\t-->",
+        "\t<g stroke=\"#FFFFFF\" stroke-width=\"1\" >",
+        "\t\t<rect fill=\"#0e8c38\" width=\"param(w) 20\" height=\"20\" rx=\"5\" />",
+        "\t</g>",
+        "\t<g transform=\"param(textpos) translate(10, 16)\">",
+        "\t\t<text font-size=\"param(fontSize) 12\" text-anchor=\"middle\" fill=\"#ffffff\">",
+        "\t\t\t<tspan content=\"param(shieldNumber) -\"/>",
+        "\t\t</text>",
+        "\t</g>",
+        "</svg>",
+        "`;",
+        "const pumpkinSource = `",
+        "<?xml version=\"1.0\" ?>",
+        "<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->",
+        "<svg width=\"800px\" height=\"800px\" viewBox=\"0 0 64 64\" enable-background=\"new 0 0 64 64\" id=\"Filled_Outline_00000081607312705973271110000009714898175699931553_\" version=\"1.1\" xml:space=\"preserve\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">",
+        "<g>",
+        "<g>",
+        "<path d=\"M41,17h-0.1c-2.705-1.27-5.714-2-8.9-2s-6.195,0.73-8.9,2H23C10.85,17,1,26.85,1,39v0    c0,12.15,9.85,22,22,22h0.1c2.705,1.27,5.714,2,8.9,2s6.195-0.73,8.9-2H41c12.15,0,22-9.85,22-22v0C63,26.85,53.15,17,41,17z\" fill=\"#FF6D1F\"/>",
+        "<path d=\"M21,4L21,4c0,1.657,1.343,3,3,3h0c2.761,0,5,2.239,5,5v3h6v-3c0-6.075-4.925-11-11-11h0    C22.343,1,21,2.343,21,4z\" fill=\"#A69D24\"/>",
+        "<path d=\"M41,43L41,43l-2,2l-2-2H27l-2,2l-2-2h0c-2.209,0-4,1.791-4,4v0c0,5.523,4.477,10,10,10h6    c5.523,0,10-4.477,10-10v0C45,44.791,43.209,43,41,43z\" fill=\"#732002\"/>",
+        "",
+        "<path d=\"M40,29c1-2.667,1.333-5.333,1-8c0,0,6,7,6,12c0,3.314-2.686,6-6,6s-6-2.686-6-6c0-2,2-4,1-8    C37.333,25,38.667,26.333,40,29z M18,25c1,4-1,6-1,8c0,3.314,2.686,6,6,6s6-2.686,6-6c0-5-6-12-6-12c0.333,2.667,0,5.333-1,8    C20.667,26.333,19.333,25,18,25z\" fill=\"#D92B3A\"/>",
+        "",
+        "<path d=\"M23,38c-2,0-4-2-4-4s1-4,1-4c0,2,1,3,2,3c2,0,3-3,3-5c1.232,2.06,2,4,2,6S25,38,23,38z M45,34    c0-2-0.768-3.94-2-6c0,2-1,5-3,5c-1,0-2-1-2-3c0,0-1,2-1,4s2,4,4,4S45,36,45,34z\" fill=\"#F2D95C\"/>",
+        "",
+        "</g>",
+        "",
+        "<g>",
+        "",
+        "<path d=\"M40.596,20.086c-0.404,0.178-0.643,0.6-0.588,1.038c0.223,1.787,0.123,3.594-0.297,5.395    C38.538,24.828,37.313,24,36,24c-0.308,0-0.599,0.142-0.788,0.385c-0.189,0.242-0.257,0.559-0.182,0.857    c0.576,2.307,0.03,3.862-0.451,5.235C34.281,31.326,34,32.128,34,33c0,3.859,3.141,7,7,7s7-3.141,7-7    c0-5.309-5.986-12.354-6.241-12.65C41.472,20.014,40.997,19.905,40.596,20.086z M46,33c0,2.757-2.243,5-5,5s-5-2.243-5-5    c0-0.531,0.216-1.147,0.466-1.86c0.395-1.124,0.9-2.564,0.799-4.465c0.51,0.499,1.129,1.348,1.841,2.772    c0.178,0.356,0.562,0.577,0.947,0.552c0.396-0.021,0.744-0.275,0.884-0.647c0.656-1.751,1.041-3.52,1.153-5.285    C43.773,26.449,46,30.14,46,33z\" fill=\"#260A04\"/>",
+        "",
+        "<path d=\"M23,40c3.86,0,7-3.141,7-7c0-5.309-5.986-12.354-6.241-12.65c-0.287-0.336-0.76-0.444-1.164-0.264    c-0.403,0.178-0.642,0.601-0.587,1.038c0.223,1.786,0.123,3.594-0.297,5.396C20.538,24.828,19.313,24,18,24    c-0.308,0-0.599,0.142-0.788,0.385c-0.189,0.242-0.257,0.559-0.182,0.857c0.577,2.307,0.031,3.862-0.451,5.235    C16.281,31.326,16,32.128,16,33C16,36.859,19.14,40,23,40z M18.466,31.14c0.394-1.124,0.899-2.564,0.798-4.464    c0.51,0.499,1.129,1.348,1.841,2.771c0.178,0.356,0.555,0.577,0.947,0.552c0.397-0.021,0.745-0.275,0.884-0.647    c0.656-1.751,1.042-3.52,1.153-5.285C25.774,26.449,28,30.14,28,33c0,2.757-2.243,5-5,5s-5-2.243-5-5    C18,32.469,18.216,31.853,18.466,31.14z\" fill=\"#260A04\"/>",
+        "",
+        "<path d=\"M41,42c-0.266,0-0.52,0.105-0.707,0.293L39,43.586l-1.293-1.293C37.52,42.105,37.266,42,37,42H27    c-0.265,0-0.52,0.105-0.707,0.293L25,43.586l-1.293-1.293C23.52,42.105,23.265,42,23,42c-2.757,0-5,2.243-5,5    c0,6.065,4.935,11,11,11h6c6.065,0,11-4.935,11-11C46,44.243,43.757,42,41,42z M35,56h-6c-4.962,0-9-4.037-9-9    c0-1.522,1.14-2.783,2.611-2.975l1.682,1.682c0.391,0.391,1.023,0.391,1.414,0L27.414,44h9.172l1.707,1.707    c0.391,0.391,1.023,0.391,1.414,0l1.682-1.682C42.86,44.217,44,45.478,44,47C44,51.963,39.963,56,35,56z\" fill=\"#260A04\"/>",
+        "",
+        "<path d=\"M64,39c0-12.63-10.233-22.911-22.843-22.996c-1.623-0.746-3.351-1.3-5.157-1.633V12    c0-6.617-5.383-12-12-12c-2.206,0-4,1.794-4,4s1.794,4,4,4s4,1.794,4,4v2.371c-1.805,0.333-3.534,0.887-5.157,1.633    C10.233,16.089,0,26.37,0,39c0,12.63,10.233,22.911,22.843,22.996C25.633,63.279,28.733,64,32,64s6.367-0.721,9.157-2.004    C53.767,61.911,64,51.63,64,39z M24,6c-1.103,0-2-0.897-2-2s0.897-2,2-2c5.514,0,10,4.486,10,10v2.095    C33.341,14.035,32.675,14,32,14s-1.341,0.035-2,0.095V12C30,8.691,27.309,6,24,6z M45.218,59.574C50.547,55.555,54,49.174,54,42    h-2c0,11.028-8.972,20-20,20c-11.028,0-20-8.972-20-20h-2c0,7.174,3.453,13.555,8.782,17.574C9.217,57.616,2,49.135,2,39    s7.217-18.616,16.782-20.574C13.453,22.445,10,28.826,10,36h2c0-11.028,8.972-20,20-20c11.028,0,20,8.972,20,20h2    c0-7.174-3.453-13.555-8.782-17.574C54.782,20.384,62,28.865,62,39S54.782,57.616,45.218,59.574z\" fill=\"#260A04\"/>",
+        "",
+        "</g>",
+        "",
+        "</g>",
+        "",
+        "</svg>",
+        "`;",
+        "",
+        "",
+        "const bulletPointSvg = `",
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+        "<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->",
+        "<svg fill=\"param(color) #000000\" width=\"800px\" height=\"800px\" viewBox=\"0 0 32 32\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\">",
+        "<title>point</title>",
+        "<path d=\"M16 4.686l-11.314 11.314 11.314 11.314 11.314-11.314-11.314-11.314zM10.343 16l5.657-5.657 5.657 5.657-5.657 5.657-5.657-5.657z\"></path>",
+        "</svg>",
+        "`;",
+        "",
+        "const shieldM1 = loadDocumentFromBuffer(shieldSource, {",
+        "\tshieldNumber: \"M1\", ",
+        "});",
+        "const shieldM5 = loadDocumentFromBuffer(shieldSource, {",
+        "\tshieldNumber: \"M5\", ",
+        "});",
+        "const pumpkin = loadDocumentFromBuffer(pumpkinSource);",
+        "const bulletPoint = loadDocumentFromBuffer(bulletPointSvg, { color: #fff});",
+        "{}",
+        "shieldM1.params"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Displaying svg documents with sprites"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments, setupTestWindow} from \"uie/bookUi.xs\"",
+        "",
+        "<fragment frShields class=fill,flexible, vertical>",
+        "    <sprite class=bg img=#444/>",
+        "    <sprite img=(shieldM1) params=(shieldM1.params) imageW=300 boxAlign=@center/>",
+        "    <sprite img=(shieldM5) params=(shieldM5.params) imageW=200 boxAlign=@center/>",
+        "</fragment>",
+        "",
+        "{}",
+        "setupTestWindow({title: \"Shields sample\"});",
+        "showFragments(frShields);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Displaying a text with embedded shields"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments, setupTestWindow, } from \"uie/bookUi.xs\"",
+        "import {@registerStyle, applyTextStyle} from \"uie/styles.xs\"",
+        "import {TextStyle} from \"system://ui.types\"",
+        "",
+        "@registerStyle",
+        "style styles {",
+        "    .sample text {",
+        "        color: #fff;",
+        "    }",
+        "    .flexible.vertical {",
+        "        layout=@flex;",
+        "        orientation=@vertical;",
+        "        valign: @top;",
+        "    }",
+        "    .flexible.vertical > * {",
+        "        boxAlign: @stretch;",
+        "    }",
+        "",
+        "    .flexible.vertical .hint {",
+        "        boxAlign: @right;",
+        "    }",
+        "    .bg { position: @absolute; top: 0; left: 0; right:0; bottom: 0; }",
+        "}",
+        "TextStyle UnitStyle { fontSize= 0.75em }",
+        "const UnitName = applyTextStyle(UnitStyle, ?);",
+        "",
+        "<fragment frInlineShields class=fill,flexible, vertical, sample color=#fff fontSize=25 padding=20>",
+        "    <sprite class=bg img=#444/>",
+        "    <text t1 text=(\"Continue on\", \" \", shieldM1, \" \", \"for 1000m, then\", \" \", shieldM5) />",
+        "    <text t2 text=(\"Test\", \" \", pumpkin, \" 10\", UnitName(\"km\"), \" ahead\" ) />",
+        "</fragment>",
+        "",
+        "{}",
+        "",
+        "setupTestWindow({title: \"Inline shield sample\", width: 350, heigth: 200});// egymasra tudnak logni, ha nincs .bg rule",
+        "showFragments(frInlineShields);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {TextStyle} from \"system://ui.types\"",
+        "{}",
+        "TextStyle {fontSize= 1.5em}"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments, setupTestWindow, getTestWindow} from \"uie/bookUi.xs\"",
+        "{}",
+        "const w= getTestWindow();",
+        "w.getElementById(@t2).font"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Sample interface for rich text manipulation"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments, setupTestWindow, } from \"uie/bookUi.xs\"",
+        "import {@registerStyle, applyTextStyle} from \"uie/styles.xs\"",
+        "import {TextStyle} from \"system://ui.types\"",
+        "",
+        "TextStyle boldStyle{ fontWeight = @bold}",
+        "TextStyle italicStyle{ fontStyle = @italic}",
+        "",
+        "const bold =  applyTextStyle(boldStyle, ?);",
+        "const italic = applyTextStyle(italicStyle, ?);",
+        "const h1 = applyTextStyle(TextStyle({ fontSize: 3rem}), ?);",
+        "const h2 = applyTextStyle(TextStyle({ fontSize: 2rem}), ?);",
+        "const h3 = applyTextStyle(TextStyle({ fontSize: 1.5rem, fontWeight:@bold}), ?);",
+        "",
+        "{}",
+        "",
+        "bold(\"Alma\", italic(\"Piros\"), \", Korte\")",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments} from \"uie/bookUi.xs\"",
+        "<fragment frRich class=fill,flexible, vertical, sample color=#fff fontSize=16 padding=20>",
+        "    <sprite class=bg img=#444/>",
+        "    ",
+        "    <text text=(h1(\"Rich text\\n\"), ",
+        "                h2(\"Creating rich texts\\n\"), ",
+        "                \"To create a 'simple' rich text \",",
+        "                \"you should specify a tuple describing its contents.\\n\",",
+        "                h3(\"Syntax\\n\"),",
+        "                italic(\"(part1 ,part2, ...)\\n\"),",
+        "                \"Where part is one of the following:\\n\",",
+        "                bulletPoint, \" a text\\n\",",
+        "                bulletPoint, \" an SVG document (with or without params)\\n\",",
+        "                bulletPoint, \" an embedded tuple starting with a new text style\\n\",",
+        "                ) ",
+        "                />",
+        "</fragment>",
+        "",
+        "{}",
+        "showFragments(frRich)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## playground"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments, setupTestWindow, getTestWindow, } from \"uie/bookUi.xs\"",
+        "import {@registerStyle, applyTextStyle} from \"uie/styles.xs\"",
+        "import {TextStyle} from \"system://ui.types\"",
+        "",
+        "@registerStyle",
+        "style styles {",
+        "    .sample text {",
+        "        color: #fff;",
+        "    }",
+        "    .flexible.vertical {",
+        "        layout=@flex;",
+        "        orientation=@vertical;",
+        "        valign: @top;",
+        "    }",
+        "    .flexible.vertical > * {",
+        "        boxAlign: @stretch;",
+        "    }",
+        "",
+        "    .flexible.vertical .hint {",
+        "        boxAlign: @right;",
+        "    }",
+        "    .bg { position: @absolute; top: 0; left: 0; right:0; bottom: 0; }",
+        "}",
+        "TextStyle UnitStyle { fontSize= 0.75em }",
+        "TextStyle FontSizeDp { fontSize= 15dp };",
+        "TextStyle UlStyle { underline=true }",
+        "TextStyle LinkStyle { underline=true; color=#ff0277bd }",
+        "const UnitName = applyTextStyle(UnitStyle, ?);",
+        "",
+        "<fragment frInlineShields class=fill,flexible, vertical, sample color=#7ff0 fontSize=25 padding=20>",
+        "    own {",
+        "        click() { console.log(event.target.charIndexAtPos(event), event.target.textInfoAtPos(event)?.style)}",
+        "    }",
+        "    <sprite class=bg img=#000/>",
+        "    <text t2 color=@inherit text=(\"Test\", \" \", pumpkin, \" 10\", UnitName(\"km\"), \" ahead\" ) onRelease=click/>",
+        "    <text t1 text=(/*\"Continue on\", */shieldM5, \" \", shieldM1, \" \", (LinkStyle, \"then again\", \" \", shieldM5, \" \", shieldM5), \" and again in a new line\") color=@inherit onRelease=click/>",
+        "    <text t3 color=@inherit text=(\"Test\", \" \", pumpkin, {toString() {\" 10\"}}, (FontSizeDp, \"km\"), \" ahead\" ) />",
+        "    <text t4 color=@inherit text=(\"aztakutyahosszustringmindenitugyenemtoriel\\xadmegakkorsemhamarmasnemlehet\") flex=1 onRelease=click/>",
+        "</fragment>",
+        "",
+        "{}",
+        "",
+        "setupTestWindow({title: \"Inline shield sample\", width: 350, heigth: 200}); // test t3 with dpi:240",
+        "const s1 = await showFragments(frInlineShields);",
+        "const win = getTestWindow();",
+        "win.getElementById(@t1).fontSize=15;",
+        "$log(s1, await debug.screenshot(win.displayId));",
+        "Chrono.delay(60min, $cancellation);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {TextStyle} from \"system://ui.types\"",
+        "",
+        "TextStyle s1 { fontWeight = @bold;  leading=1.125 }",
+        "TextStyle s2{ fontStyle = @italic; fontSize=1.2em; lineHeight= 1.25sdp}",
+        "{}",
+        "s1, s2, s1.lineHeight, s2.leading"
+      ]
+    }
+  ]
+}

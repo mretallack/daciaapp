@@ -1,0 +1,217 @@
+import { getContentsforPackage } from "app://yellowbox.updateApi"
+import { packageList } from "./service/packages.xs"
+import { from, filter } from "system://list.transforms"
+import { app, selection, yellowStorage, defaultPushServer } from "./app.xs"
+import { frListCardBase, showMandatoryUpdateNoti } from "./app.ui"
+import {headUnit} from "~/src/toolbox/connections.xs"
+import * as networkStatus from "~/src/toolbox/networkStatus.xs"
+import input from "uie/components/inputComponent.ui"
+import { normalize, matches } from "system://string.normalize"
+import { list } from "system://core.types"
+import tTag from "./components/tag.ui"
+import { tagMapping } from "./utils/box.xs"
+import { Messagebox, Button } from "./components/messageboxes.xs"
+import {packageManager} from "./toolbox/packages/packageModel.xs"
+import {reduce, path, void, cmpByPath, cmp, reverseArgs, pipe} from "core://functional"
+import * as ltr from "system://list.transforms"
+import { contentCard } from "./components/contentCard.xs";
+import { @restorePos } from "uie/util/listState.xs"
+import { i18n } from "system://i18n"
+import {currentUser} from "./profile/user.ui"
+import {banner, Banner} from "~/src/components/banner.xs"
+import { @disposeNull} from "core/dispose.xs"
+import {ErrorType} from "./service/datamodel.xs"
+import {trackEvent} from "analytics/analytics.xs"
+import {DelayedExecutor} from "./utils/util.xs"
+import {settingsProperties, notificationBanner, trackingBanner} from "./profile/userProfile.ui"
+import inputFocus from "uie/input/inputFocus.xs"
+import {languages} from "./utils/languages.xs"
+import {gaItem, gaEventPrice} from "./service/googleAnalytics.xs"
+
+const shopBanner = new Banner(
+	i18n`Sign in and pair your car for personalized offers!`, 
+	{ icon: "Connect car.svg", active: true }
+);
+
+class ShopHandler {
+	status := packageList.status;
+	filter;
+	filterTracker = new DelayedExecutor(1s, (value)=>value?trackEvent("search", {id: "shop", value}):void);
+	sort = @nameAsc;	// can be @nameAsc, @nameDesc
+	backVisible := this.filter;
+ 	device := (headUnit.device ?? headUnit.lastConnectedDevice);
+	packages := packageList.list;
+	@disposeNull
+	filteredPackages := from( this.sortedList ).filter( e=> {if (this.filter) matches( e.locale.title, normalize(this.filter)); else true} ).filter( i=>{ reduce((acc,tag)=>{acc && i.tags.includes(tag) }, true, this.tagFilters ?? [] )} ).build();
+	sortedList = new list();
+	headerAndPackages := from([@scrollableHeader]).concat(this.filteredPackages).build();
+	#errorNoti;
+	@dispose #netChangeSubs;
+
+	tagFilters;
+
+	onChange packages(){
+		this.sortList();
+	}
+	onChange status( newVal ){
+		if ( newVal ==  @error ) {
+			if (packageList.errorDetails?.errorType == ErrorType.UnsupportedClientVersion) {
+				showMandatoryUpdateNoti();
+			} else {
+				this.#errorNoti = showErrorNoti();
+				if (!networkStatus.hasInternet()) {
+					this.#netChangeSubs = networkStatus.subscribe((status) => {
+					if (status?.internet) 
+						packageList.fillPackageList();
+					});
+				}
+			}
+		} else {
+			this.#errorNoti?.hide();
+			this.#errorNoti = undef;
+		}
+	}
+
+	onChange sort( newVal ){
+		this.sortList();
+	}
+
+	filterResults( tag ){
+		trackEvent("filterAdd", {id: "shop", value: string(tag)});
+		if ( this.tagFilters && !this.tagFilters.includes(tag) ) this.tagFilters = this.tagFilters.toSpliced(-1, 0, tag);
+		else this.tagFilters = ( tag, );
+	}
+
+	removeFilter( tag ){
+		trackEvent("filterRemove", {id: "shop", value: string(tag)});
+		if ( !this.tagFilters )	return;
+		if ( let idx = this.tagFilters.indexOf( tag ); idx >=0 ) {
+			this.tagFilters = this.tagFilters.toSpliced( idx, 1 );
+		}
+	}
+
+	sortList(){
+		if ( !this.sort ) return this.sortedList = list.from( this.packages );
+		else if ( this.sort == @nameAsc || this.sort == @nameDesc) {
+			let s = pipe(path("locale.title"),languages.collator);
+			if (this.sort == @nameDesc) s = pipe(reverseArgs, s);
+			this.sortedList = list.from(this.packages.toSorted( s ));
+		}
+	}
+
+}
+
+@dispose
+export ShopHandler handler;
+
+export <fragment frShop class=main 
+		onShow(){
+			handler.sortList();
+			shopBanner.activate();
+			notificationBanner.activate();
+			trackingBanner.activate();
+			packageList.setPackageListProperties() 
+		}
+		extends=frListCardBase>
+	own {
+		let emptyText = i18n`No results were found for this search term, try something else.`;
+		let emptyVisible = ( handler.status==@ready && !handler.filteredPackages.length );
+		let emptyImage = "search.svg";
+		let loading = ( handler.status==@loading );
+		let filter <=> (handler.filter ?? ""), function(newVal){
+			handler.filterTracker.value = newVal;
+			handler.filter = newVal;
+			filter = newVal;
+		};
+		let needPermissions = (yellowStorage.pushNotiEnabled && !settingsProperties.bannerClosed && SysConfig.get("yellowBox", "pushServer", defaultPushServer) != "none");
+		closeKeyboard(){
+			inputFocus.setInputFocus( undef, fragment.head.window );
+		}
+
+		<template tShopScrollableHeader class=flexible, vertical w=100%>
+			<banner class=mediumMarginX banner=(shopBanner) visible=(!(currentUser.token && handler.device)) />
+			<banner class=mediumMarginX banner=(notificationBanner) visible=(needPermissions && !settingsProperties.notiPermission) />
+			<banner class=mediumMarginX banner=(trackingBanner) visible=(needPermissions && !settingsProperties.trackingPermisson) />
+			<group class=flexible, horizontal, mainContentPadding, smallPaddingY>
+				<lister model=([...(handler.tagFilters??[])]) template=(tTagFilter) />
+				<spacer flex=1 />
+				// Note: large + main = extraLarge => same as contentCard rightMargin
+				<sprite class=icon,normal touchEvents=@box img=( handler.sort == @nameAsc ? "sort_by_name_down.svg" : "sort_by_name_up.svg") 
+						onRelease(){ 
+							if (handler.sort == @nameDesc) handler.sort=@nameAsc; 
+							else  handler.sort=@nameDesc;
+						}/> 
+			</group>
+		</template>
+
+		<template tShopEntry class=flexible, vertical w=100% onRelease(){ onPackageSelected(item) }>
+			own{
+				let headerImg =( item.snapshot.image );
+			}
+			<contentCard class=extraLargeMarginX marginBottom=8 title=(item.locale.title ?? "") subtitle=(item.snapshot.contentRelease ?? "") tags=(item.tags ?? []) tagAction(element){ handler.filterResults( element ) } headerImg=(headerImg ?? @unset) />			
+		</template>
+
+		<template tFilterableTag extends=tTag onRelease(){ handler.filterResults( item ) } />
+
+		<template tTagFilter class=flexible, horizontal, smallPaddingX, smallPaddingY, smallMarginRight >
+			<sprite class=(@bg, @tag, item) />
+			<text class=(item, @h2) text=(tagMapping[item]) />
+			<sprite class=(@icon, @small, @close, item) img="close.svg" paddingLeft=8 onRelease(){ handler.removeFilter( item ) }/>
+		</template>
+
+	}
+	<group class=flexible, horizontal, mainContentPadding visible=( !loading )>
+		<sprite class=icon, normal img="search.svg"/>
+		<spacer class=horizontal, medium />
+		<input class=search value<=>filter empty=i18n`Search` allowCursorClick=true actionHint=@search>
+			<sprite class=input, black img="close.svg" onRelease(){ filter="" } visible=(filter)/>
+		</input>
+	</group>
+	<group class=flexible,vertical,flex visible=( !loading ) onClick=closeKeyboard onShow(){this.addEventListener(@mouseDown, closeKeyboard, true );}>
+		<sprite class=bg, panel/>
+		<group class=flexible,vertical >
+			@restorePos()
+			<listView class=fill model=(handler.headerAndPackages) template=( tShopEntry ) flex=1 visible=( handler.status==@ready ) 
+				templateType() { 
+					if (item == @scrollableHeader)
+						return tShopScrollableHeader; 
+					else 
+						return @default;
+				}>
+				<wheel/>
+				<scroll/>
+			</listView>
+			<group class=flexible, vertical, extraHugePaddingX, mainPaddingY visible=( handler.status==@error )>
+				<spacer flex=4 />
+				<sprite class=icon, big, noResults img="sadface.svg" />
+				<text class=paragraph, noResults text=i18n`Unable to connect to the server.` />
+				<text class=paragraph, noResults text=i18n`Please try again later.` />
+				<spacer flex=5 />
+			</group>
+		</group>
+	</group>
+</fragment>
+
+showErrorNoti(){
+	let noti = new Messagebox;
+	noti.addLine(i18n`Unable to connect to the server.`)
+	.setOverlay()
+	.addIcon( "Network.svg" )
+	.addButton( new Button({text:i18n`Cancel`, style:@info }) )
+	.addButton( new Button({text:i18n`Retry`, action: _ => { packageList.fillPackageList(); } }) );
+	noti.show();
+	return noti;
+}
+
+export async onPackageSelected( item ){
+	trackEvent("view_item", #{
+		...gaEventPrice(item.salesPackage[0]),
+		items: [ gaItem(item, item.salesPackage[0]) ] 
+	} );
+	?? getContentsforPackage(item); 
+	selection.reset();
+	selection.package = item;
+	if ( item.salesPackage.length == 1 )
+		selection.subscription = item.salesPackage[0];	
+	app.next( @Details );
+}

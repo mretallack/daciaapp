@@ -1,0 +1,51 @@
+import { typeof } from "system://core"
+import { @registerStyle } from "uie/styles.xs"
+
+@registerStyle
+style radioStyles {
+	component#radio sprite.radioImg {
+	boxAlign: "center";
+	align: "center";
+	phaseName: (attributes.phaseName ?? "normal");
+	img: ( attributes.icon ?? ({
+								borderRadius: ( [ this.h / 2 ] ),
+								borderWidth: 3,
+								borderImg: #ffffff,
+								img: #ffffff }) );	
+}
+
+component#radio:checked sprite.radioImg {
+	phaseName: "active";
+	img: ( attributes.icon ?? ({
+								borderRadius: ( [ this.h / 2 ] ),
+								borderWidth: 2,
+								borderImg: #ffffff,
+								img: #000000 }) );
+	 
+}
+
+
+}
+
+/**
+* Component for represent a radio widget
+* Because of the includeChildren you can insert any widget before or after the sprite of the radio
+* @param icon image for radio visualization, on and off phase needed
+* @param iconH the radio icon height
+* @param iconW the radio icon width
+* @bg background color of the radio
+* @phaseName phaseName of the radio image
+**/
+export default
+<component radio checked=( ??attributes.checker ? attributes.checker( this.value, this.group.value ) : ( this.value == this.group.value ) ?? false ) layout=@flex
+	defaults={ iconH: 30, iconW: 30, iconVisible : true, text: undef, textVisible: true }>
+	onBeforeRelease() {
+		attributes?.beforeRelease ? attributes.beforeRelease() : fragment.head.group.value = fragment.head.value; // using fragment.head to prevent circular references
+	}
+	<sprite bg class="fill" position="absolute" attributes={ img: bg, paddingLeft: bgPaddingLeft, paddingRight: bgPaddingRight, default: true } />
+		
+	<includeChildren filter=".beforeIcon" />
+	<sprite class="radioImg" attributes={ default: true, img: icon, imageW: iconW, imageH: iconH } visible=( attributes.iconVisible  )/>
+	<text text=(attributes.text ?? ( typeof( attributes.value ) == @object ? "N/A" : string( attributes.value ))) visible=( attributes.textVisible ) />
+	<includeChildren />
+</component>

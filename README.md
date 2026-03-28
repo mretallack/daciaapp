@@ -6,6 +6,68 @@
 
 Android app that connects to a MediaNav 4 head unit over USB AOA, performs an NFTP Init handshake, reads `device.nng`, and provides a tabbed explorer interface for browsing the head unit's filesystem. Read-only — no files are written, deleted, or modified.
 
+## Top-Level Goal
+
+Get the **original Dacia Map Update app** to connect to our Python emulator instead of the real head unit. This would let us:
+1. Capture the exact NFTP packets the real app sends (including correct symbol IDs)
+2. Understand the full QueryInfo protocol by observing real traffic
+3. Reverse-engineer the symbol ID assignments
+4. Eventually replicate the full protocol in our Java implementation
+
+### Current Progress
+
+| Step | Status | Notes |
+|------|--------|-------|
+| Python emulator (TCP) | ✅ Done | Handles Init, GetFile, QueryInfo, CheckSum |
+| Emulator listens on port 9876 | ✅ Done | Same port as iOS YellowBox listener |
+| Firewall open on server | ✅ Done | Port 9876/tcp open |
+| Phone can reach server | ✅ Verified | Ping and TCP from phone to 10.0.0.78 works |
+| Our Java app connects to emulator | ✅ Working | Java NFTP probe connects, gets device.nng, QueryInfo with strings |
+| NNG SDK `.so` libs load | ✅ Working | `liblib_nng_sdk.so` + base + memmgr |
+| NNG SDK engine starts | ✅ Working | Engine reaches RUNNING state |
+| NNG SDK asyncEval | ✅ Working | System.import works; can access socket, serialization, fs, os modules |
+| NNG SDK boot script | ❌ Not working | Boot scripts never execute despite correct config |
+| NNG compact serialisation | ✅ Solved | Symbols are 0x8d + null-terminated string, NOT integer IDs |
+| Full YellowBox `.xs` scripts bundled | ✅ Done | Bundled as assets, project system loads with skin=yellowbox |
+| Real NNG code connects to emulator | ✅ Working | sock.connect + DataWriter/DataReader work via asyncEval |
+| QueryInfo format correct | ✅ Done | Serialiser updated to use 0x8d compact identifiers |
+| QueryInfo tested on head unit | ❌ Not yet | Need to test with real head unit |
+
+### Approaches to Get the Real App Talking to Our Emulator
+
+The "real app" means running the actual NNG SDK code (`.so` libs + decompiled `.xs` scripts) inside our probe app, with the full YellowBox module chain loaded.
+
+**Current approach: Bundle the full YellowBox `.xs` scripts**
+
+The real app's data directory (`xs_extract/data/`) contains:
+- `yellowbox/project.ini` — SDK project config (`skin=yellowbox`)
+- `yellowbox/src/main.xs` → `connections.xs` → imports socket + NFTP modules
+- `xs_modules/core/nftp.xs` — NFTP protocol implementation
+- `yellowbox/fonts/` (7.8MB), `yellowbox/res/` (30MB) — UI assets (may not be needed)
+
+The `.xs` scripts total ~2MB. The SDK loads `main.xs` which imports `connections.xs` which initialises the socket and NFTP modules. On iOS, it starts a TCP listener on port 9876. On Android, it uses USB AOA.
+
+**Plan:**
+1. Bundle the full `xs_extract/data/` directory (or just the `.xs` scripts) as app assets
+2. Modify `connections.xs` to also start the TCP listener on Android (currently iOS-only)
+3. Point the SDK at this data directory (no boot script — use the project system)
+4. The SDK loads the full module chain, including socket and NFTP
+5. Our emulator connects to the TCP listener (or the app connects outbound)
+6. Capture the real QueryInfo packets with correct symbol IDs
+
+**Key challenge:** The SDK needs the full module chain to load. Many modules import UI components, fonts, Android services, etc. The UI will fail but the NFTP/socket code should still initialise since `connections.xs` is imported with `import {} from` (side-effect import).
+
+**What we've learned about the SDK so far:**
+- `asyncEval` is sandboxed — no imports, no modules, no globals bridge (error -14)
+- Boot scripts run but are isolated from asyncEval
+- The SDK DOES start successfully and reaches RUNNING state
+- The project system (`project.ini`) needs the correct directory structure
+- Console output from `.xs` scripts needs `log_2="logcat:console:3"` in project.ini
+
+### NNG SDK Integration Attempts
+
+See [NNG_SDK_INTEGRATION.md](NNG_SDK_INTEGRATION.md) for the full investigation into using the NNG SDK's native library directly. Summary: asyncEval is too sandboxed to access the socket or serialization modules.
+
 ## Features
 
 - **Probe tab** — Init handshake + device.nng retrieval, TCP emulator connection
@@ -17,7 +79,7 @@ Android app that connects to a MediaNav 4 head unit over USB AOA, performs an NF
 
 ### Known Limitations
 
-- **QueryInfo is blocked** — the NNG symbol IDs needed for `@device`, `@brand`, `@fileMapping`, `@ls`, `@freeSpace`, `@diskInfo` are unknown. See [nftp.md](nftp.md) for the full investigation.
+- **QueryInfo untested against real head unit** — the serialisation format has been corrected (0x8d compact identifiers confirmed from real NNG SDK), but needs testing against the actual head unit
 - **No dynamic directory listing** — the explorer uses hardcoded paths from the default file mapping instead of `@ls` queries
 - **No parsed device info** — device.nng is shown as raw hex; parsing the binary format is not yet implemented
 

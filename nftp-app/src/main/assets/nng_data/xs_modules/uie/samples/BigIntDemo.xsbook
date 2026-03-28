@@ -1,0 +1,237 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# BigInt",
+        "",
+        "BigInt values arbitray big integers only limited by the available memory. Inspired by the ecmascript bigint primitive value.",
+        "",
+        "BigInt can created from number or from their string representation. BigInt literals are not yey supported",
+        "",
+        "Parsing from string supports decimal, hexadecimal, binary and octal"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "const b = BigInt(\"12_300_000_000_000_000_000\");",
+        "$log(b, b+1, b+BigInt(2));",
+        "const n = BigInt(\"0x1_1223_3445_56Ab_2353_4623_4624_5624_6677\"); // hexstring",
+        "$log(n);",
+        "$log(n*2);",
+        "$log(-n);",
+        "$log(BigInt(1.5e100));"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "BigInt can be converted to string via `toString(radix=10)` method."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "const b = BigInt(\"123456789\");",
+        "$log(b.toString());",
+        "$log(b.toString(16));",
+        "$log(b.toString(2));"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "BigInt operation supports +,-, *, /, %. unary negation.",
+        "",
+        "Additional methods: sign, not, negate, abs, shr, shl, toString"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## bigint factorial, fibonacci"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "factorial(n) {",
+        "    let r = BigInt(1);",
+        "    for(let i=1; i<n; ++i) {",
+        "        r *= i;",
+        "    }",
+        "    return r;",
+        "}",
+        "const factorial_ = +> Iter.range(1,^).reduce((r,i)=>r*i, BigInt(1));",
+        "{}",
+        "$log(factorial(100));",
+        "$log(factorial_(100));",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "import {mapArgs} from \"core://functional\"",
+        "fibonacci(n) {",
+        "    if (n<=0) return BigInt(0);",
+        "    let a,b=BigInt(1),BigInt(0);",
+        "    for(; n>1; --n) {",
+        "        const t = a;",
+        "        a+=b;",
+        "        b=t;",
+        "    }",
+        "    return a;",
+        "}",
+        "{}",
+        "mapArgs(fibonacci, 1,2,3,4,5,6,7,8)",
+        "//fibonacci(1000)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## compare, sort",
+        "",
+        "BigInt can be compared with bigint, so it can be sorted"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "(BigInt(100), BigInt(-100), BigInt(1), BigInt(0x100000000)).toSorted()"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "**Note**  BigInt and nubmer covnersion not yet supported  (TODO: numCmp to Math or core module)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "(BigInt(100), BigInt(-100), BigInt(1), BigInt(0x100000000), 200).toSorted()"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## conversion"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "$log(BigInt(-123).int()); // to int conversion",
+        "$log(BigInt(0).bool(), BigInt(10).bool());"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Serialization",
+        "",
+        "BigInt can be persisted and serialized. Both persistence, serialization stream and remoting supports it."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "import {Stream, Reader} from \"system://serialization\"",
+        "{}",
+        "let s = Stream(@compact);",
+        "s.add(BigInt(\"0x11223344556Ab23534623462456246677\"));",
+        "let r = Reader(s.transfer());",
+        "$log(r.next().toString(16));"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## test"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "BigInt.asIntN(38, -BigInt(0x1_ffFF_ffFF)).toString(16),",
+        "BigInt.asUintN(38, -BigInt(0x1_0000_0000)).toString(16);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "hexAsIntN(b,n) { BigInt.asIntN(b, BigInt(n)).toString(16)}",
+        "hexAsUintN(b,n) { BigInt.asUintN(b, BigInt(n)).toString(16)}",
+        "{}",
+        "const i3=hexAsIntN(3,?);",
+        "const u3=hexAsUintN(3,?);",
+        "//...Iter.range(-8,8).map(hexAsUintN(64,?))",
+        "...Iter.range(-8,8).map(i3)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "//BigInt(\"0x7fff_ffff_ffff_ffff\").int64()",
+        "BigInt(\"-0x8000_0000_0000_0000\").int64()"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {BigInt} from \"system://bigint\"",
+        "{}",
+        "//BigInt(-0xc000_0000L).and(BigInt(-0x5000_0000L)).toString(16)",
+        "//BigInt(-0xc_0000_0000L).or(BigInt(0x5000_0000L)).toString(16)",
+        "BigInt(-0x1_0000_0000L).xor(BigInt(0x5L)).toString(16); // -FFFFFFFB",
+        "BigInt(-0x2_0000_0000L).xor(BigInt(0x5L)).toString(16); // -1FFFFFFFB",
+        "BigInt(-0x8000_0000L).xor(BigInt(0x8000_0000L)).toString(16); // -100000000",
+        "BigInt(-0x8000_0000L).xor(BigInt(0x1_8000_0000L)).toString(16); // -200000000",
+        "BigInt(-0x8000_0000L).xor(BigInt(\"0x1_0000_0000_8000_0000\")).toString(16); // -200000000",
+        "BigInt(-0x8000_0000L).xor(BigInt(\"0xffff_ffff_8000_0000\")).toString(16); // -200000000"
+      ]
+    }
+  ]
+}

@@ -140,6 +140,34 @@ public class NftpProbe {
                 log.log("raw: " + hex(contentResp, 512));
             }
 
+            // Try GetFile on various paths to explore the filesystem
+            log.log("=== Exploring filesystem via GetFile ===");
+            String[] paths = {
+                "license/device.nng",
+                "license/license.nng",
+                "content/content.nng",
+                "save/settings.nng",
+                "config/config.nng",
+                "map/map.nng",
+                "sys/version.txt",
+                "version.txt",
+                "info.txt",
+            };
+            for (String path : paths) {
+                byte[] body = buildGetFile(path);
+                byte[] resp = conn.sendAndReceive(body);
+                int status = resp.length > 0 ? (resp[0] & 0xFF) : -1;
+                if (status == 0 && resp.length > 1) {
+                    log.log(path + ": OK " + (resp.length - 1) + " bytes");
+                    // Show first 64 bytes of content
+                    byte[] content = new byte[Math.min(64, resp.length - 1)];
+                    System.arraycopy(resp, 1, content, 0, content.length);
+                    log.log("  " + hex(content));
+                } else {
+                    log.log(path + ": status=" + status);
+                }
+            }
+
             log.log("=== queryFiles: license ===");
             byte[] licenseLs = buildQueryFiles("license");
             byte[] licenseResp = conn.sendAndReceive(licenseLs);

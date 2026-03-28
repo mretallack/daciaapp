@@ -1,0 +1,35 @@
+import { @registerStyle } from "uie/styles.xs"
+
+@registerStyle
+style styles {
+	component#unitText .dataValue,
+	component#unitText .dataUnit {
+		font: ( attributes.font ?? "roboto, Regular" );
+	}
+
+	component#unitText .dataValue {
+		fontSize: ( attributes.fontSizeUnit ?? 16 );
+		marginRight: 4;
+	}
+
+	component#unitText .dataUnit {
+		fontSize: ( attributes.fontSizeUnit ?? 14 );
+	}
+
+}
+/**
+* Component for represent a formatted value and unit text
+* @param value the value of the formatted text
+* @param valueFormatter formatter function to format the value
+* @param unitFormatter formatter of the unit
+* @param fontSizeUnit font size for the text widgets
+* @param charSpacing 1 character spacing with unit fontsize
+* @param font font style of the text
+* @param valueFormatter 
+**/
+export default
+<component unitText defaults={ value: (m_i18n("n/a")), fontSizeUnit: undef, charSpacing: 1, inheritedTransition: undef } layout=@flex >
+	<text class="dataValue" text=( attributes.valueFormatter( attributes.value ) ) attributes={ paddingLeft: bgPaddingLeft, default: true, transition: inheritedTransition } />
+	<text class="dataUnit spacing" text=" " visible=( attributes.charSpacing ) /> 
+	<text class="dataUnit" text=( attributes.unitFormatter ?? undef ?  attributes.unitFormatter( attributes.value ) : "" ) attributes={ paddingRight: bgPaddingRight, default: true, fontSize: fontSizeUnit, transition: inheritedTransition } visible=( attributes.unitFormatter ?? false ) />
+</component>

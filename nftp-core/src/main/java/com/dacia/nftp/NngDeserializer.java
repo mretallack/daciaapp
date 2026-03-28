@@ -29,18 +29,24 @@ public class NngDeserializer {
 
     public Object readValue() {
         if (pos >= data.length) return null;
-        int tag = data[pos++] & 0x3F; // bits 0-5
+        int rawTag = data[pos++] & 0xFF;
+        boolean modifier = (rawTag & 0x80) != 0;
+        int tag = rawTag & 0x3F; // bits 0-5
         switch (tag) {
             case NngSerializer.TAG_UNDEF: return null;
             case NngSerializer.TAG_INT32: return readInt32();
             case NngSerializer.TAG_UINT64: return readUInt64();
-            case NngSerializer.TAG_STRING: return readString();
-            case 4: return readString(); // I18NString — treat as string
+            case NngSerializer.TAG_STRING:
+                return modifier ? readNullTerminatedString() : readString();
+            case 4: return modifier ? readNullTerminatedString() : readString(); // I18NString
             case NngSerializer.TAG_DOUBLE: return readDouble();
             case NngSerializer.TAG_TUPLE: return readTupleFixed();
             case NngSerializer.TAG_DICT: return readDictFixed();
             case NngSerializer.TAG_ID_INT: return "@" + readInt32();
-            case NngSerializer.TAG_ID_STRING: return "@" + readString();
+            case NngSerializer.TAG_ID_STRING:
+                // With modifier (0x8d): null-terminated — this is the compact format
+                // Without modifier (0x0d): VLU-length-prefixed
+                return "@" + (modifier ? readNullTerminatedString() : readString());
             case 14: return readInt32(); // GenericHandle
             case 15: return "@" + readInt32(); // ObjectHandle (treat as int)
             case NngSerializer.TAG_ID_SYMBOL: return "@symbol:" + readInt32();
@@ -53,8 +59,7 @@ public class NngDeserializer {
             case NngSerializer.TAG_DICT_VLI_LEN: return readDictVli();
             case 21: return readByteStream(); // ByteStream
             default:
-                // Unknown tag — log and return marker
-                return "[unknown tag=" + tag + " at pos=" + (pos - 1) + "]";
+                return "[unknown tag=0x" + Integer.toHexString(rawTag) + " at pos=" + (pos - 1) + "]";
         }
     }
 
@@ -81,6 +86,15 @@ public class NngDeserializer {
         int len = (int) readVlu();
         String s = new String(data, pos, len, StandardCharsets.UTF_8);
         pos += len;
+        return s;
+    }
+
+    /** Read a null-terminated UTF-8 string (used when modifier bit is set). */
+    private String readNullTerminatedString() {
+        int start = pos;
+        while (pos < data.length && data[pos] != 0) pos++;
+        String s = new String(data, start, pos - start, StandardCharsets.UTF_8);
+        if (pos < data.length) pos++; // skip null terminator
         return s;
     }
 

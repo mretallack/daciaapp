@@ -1,0 +1,698 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Functional and core samples",
+        "",
+        "## Imports",
+        "",
+        "This imports are needed to run the other samples presented here"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {apply, applyMethod, objOf, constant, always, tap, pipe, compose, call, juxt, thunk, thunkify, curryN, curry, @curry, _} from \"core://functional\"",
+        "import {string, getFailObject, failure, id, keys, entries, typeof} from \"system://core\"",
+        "import * as F from \"core://functional\"",
+        "import {Proxy} from \"system://core.proxy\"",
+        "import {filter,seq,any} from \"system://itertools\""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## tap",
+        "`tap` can be used to quickly write an inspection into existing code. It passes its parameters to the given function but returns the original params.",
+        "E.g. to inpsect `x` in `doSomething(x)` you can write <br>",
+        "`doSomething(tap(inspector, x))` and it will pass `x` to the function `inspector`"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "function myFunc(x) { console.log(\"inside myFunc\"); x+2; }",
+        "let x=42;",
+        "const logInspect = tap($log); // passes params to log but returns parameters as is",
+        "myFunc(x);",
+        "",
+        "myFunc(logInspect(x));",
+        "x |> logInspect(^) |> myFunc(^); ",
+        "",
+        "const logInspectM = msg => tap($log(msg, ?));",
+        "let inspector = logInspectM(\"will pass arg to myFunc: \");",
+        "myFunc(inspector(x)); // will call myFunc(x) and log x",
+        "x |> inspector(^) |> myFunc(^);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {apply, applyMethod, objOf, constant, always, tap, pipe, compose, call, juxt, thunk, thunkify, reduce, curryN, curry, @curry, arity, mute,_} from \"core://functional\"",
+        "{}",
+        "const mf = mute(v=>{$log(\"param:\",v); 11}); // the actual retval is removed by mute",
+        "$log(arity(mf));",
+        "$log(arity(v=>v));",
+        "mf(42); // has no ret"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {minmax, typeof} from \"system://core\"",
+        "import {mapArgs} from \"system://functional\"",
+        "{}",
+        "$log(mapArgs(v=>10*v, 1,2,3));",
+        "$log(mapArgs(v=>(:v,10*v), 1,2,3));",
+        "$log(mapArgs(v=>v%2?v:(:), 1,2,3,4,5));"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {reverseArgs} from \"system://functional\"",
+        "{}",
+        "reverseArgs(1,2,3)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {prop, propOr} from \"system://functional\"",
+        "const test = {alma:\"al1\", korte:\"ko2\", banan: \"ba3\"};",
+        "{}",
+        "$log(prop(@alma,test));",
+        "$log(prop(@alma)(test));",
+        "$log(propOr(-1, @_noprop, test));",
+        "const propOpt = propOr(undef);",
+        "propOpt(@alma)(test);",
+        "$log(propOr(-1)(@_noprop)(test));",
+        "/*class HereExtractor {",
+        "    //static name(o) { o.fancyName}",
+        "    static name = prop(@fancyName)",
+        "}",
+        "extractor = HereExtractor;",
+        "extractor.name(item);*/"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {prop, propOr, path,assocPath} from \"system://functional\"",
+        "const path_abc = path(@a, @b, @c);",
+        "const o1 = #{a: #{b: #{c: 42}}};",
+        "const o2 = #{a:[ #{c: 100}, #{c:1000}]};",
+        "const o3 = #{a:[ #{c: 10}, #{c:42}]};",
+        "{}",
+        "$log(path_abc(o1)); //pipe(path(\"a.b\"), prop(\"mapkey\"));",
+        "$log(path(\"a.b.c\")(o1));",
+        "const a1c = path(\"a[1].c\");",
+        "$log(a1c(o2), a1c(o3));",
+        "$log(??a1c(o1));",
+        "$log(path(\"a[0]\")(o2));",
+        "$log(path(\"byteLength\")(\"aaa\")); // 3",
+        "$log(path(\"a.b.c\", o1));",
+        "$log(\"assocPath a.b.c\", assocPath(\"a.b.c\", -42, o1));",
+        "$log(assocPath(\"a.b.c\", -42, #{a:#{b:undef}}));",
+        "$log(assocPath(\"a.b.c\")(-42)(#{a:#{b:undef}}));",
+        "//assocPath(\"a.b.c\", -42, #{a:undef});",
+        "//assocPath(\"a.b.c\")(-42, undef);",
+        "assocPath(\"[0][0][0]\")(-42, undef /*#{}*/); // should (((-42,),),)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {props} from \"system://functional\"",
+        "{}",
+        "const o = #{a:1, b:2, c:3, d:4};",
+        "$log(props([@a,@c,@b])(o)); // creates an array",
+        "$log(props((@a,@d,@b))(o)); // creates a tuple",
+        "$log(props(@a,@c,@d)(o)); // multiple retval",
+        "$log(props(@a,(@b,[@c,@d]))(o)); // custom retval shape item x, (x, [x,x,]) "
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {assoc} from \"system://functional\"",
+        "{}",
+        "// assoc makes a shallow copy of the source and replaced the given property with the given value",
+        "// either creates a record or a tuple",
+        "const a = \"prop_a\";",
+        "$log(assoc(@alma, 42, #{a, alma:56, korte:11}));",
+        "$log(assoc(@alma)(42)(#{a, alma:56, korte:11}));",
+        "$log(assoc(0, 42, [10,20,30]));",
+        "$log(assoc(2, 42, (10,20))); // extends tuple"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {Map} from \"system://core.types\"",
+        "Map m [(@a,1), (\"b\",2),];",
+        "{}",
+        "assoc(@a, 42, m); // \"clone\" map if it is in right form"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## User defined symbols",
+        "",
+        "User defined symbol are unique tokens. They can be used as singleton values and as property keys.",
+        "",
+        "Symbols can be created by the Symbol function. The function accepts an optional description."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const s1 = Symbol(\"alma\");",
+        "const s2 = Symbol(\"korte\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Displaying symbols in debug extension"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "s1,s2, [[s1,s2]]"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.log(`${s1} ${s1 == s2 ? \"=\" : \"!\"}= ${s2}`);",
+        "console.log(`_ is a symbol in functional: ${_}. Its description is \"${_.description}\"`);",
+        "console.log(`${Symbol.iterator} has also description: \"${Symbol.iterator.description}\"`);",
+        "",
+        "let d = { a: 42, [s1]: \"hidden\", [s2]: \"hidden\"};",
+        "console.log(\"keys of d: \", ...keys(d)); // won't enumerate symbols",
+        "console.log(`d[${s1}] = ${d[s1]}`); // can be read"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "*alma(i1, i2) {",
+        "    yield @first; yield i1; yield i2; yield @last;",
+        "}",
+        "const iter = F.genToIter(alma, 42, 24);",
+        "const i_alma = F.iterify(alma);",
+        "const iter2 = i_alma(24,42);",
+        "console.log(...iter);",
+        "console.log(...iter);",
+        "console.log(...iter2);",
+        "console.log(...iter2);",
+        "console.log(i_alma(88)(11));",
+        "",
+        "const x = () => \"alma\";",
+        "function stringifyWith(f) {",
+        "    curry(pipe(thunkify(f), objOf(@toString)));",
+        "}",
+        "const defTrans = stringifyWith(curryN(1,id));",
+        "console.log(\"x\" + defTrans(\"lama\"));",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {allPass, anyPass} from \"system://functional\"",
+        "",
+        "{}",
+        "allPass(v=>2.0*v  || \"\", v=>v/2)(11);",
+        "anyPass(v=>0, v=>\"alma\", v=>\"koret\")();"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {or,xor,and} from \"system://functional\"",
+        "{}",
+        "or(), or(\"alma\", 1), or(\"\",0, 0.0, \"kor\"), and(), and(\"aaa\", \"bbb\"), and(false, \"s\"), and(\"\", 1), and(\"a\", \"b\", \"c\", \"D\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {or,xor,and} from \"system://functional\"",
+        "{}",
+        "xor(false, true, true), xor(false, true)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.log(1,?,2)(42)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const f = +> ^ + 1 |> ^+2 |> ^+3;",
+        "const s = +> ^ + 1;",
+        "const id = +> ^;",
+        "{}",
+        "",
+        "console.log(s(41));",
+        "console.log(f(10));",
+        "console.log(1+id(), id(\"alma\"));",
+        "console.log(id(1,2,3,4))"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const l = [10,20,30,40];",
+        "{}",
+        "...Iter.chainMapped(l, Iter.take(2), Iter.map(+> ^/10))"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const l = [10,20,30,40];",
+        "const p = [\"tiz\",\"husz\"];",
+        "{}",
+        "...Iter.chainMapped(l, Iter.zip(p,?), Iter.map(+> ^/10)) // todo: won't wokr with Iter.zip(?,p)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Iter.unfold - Fibonacci",
+        "",
+        "Iter.unfold returns an iterable generated by a function. The function is invoked with a state and it should return the next value and next state.<br>",
+        "The returned iterator is an infinite iterator. So the next example only takes the first 10 of the infinite Fibonacci sequence"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "...Iter.unfold(st=> {st[0], (st[1], st[0]+st[1])},(1,2)).take(10)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Playground to test async backtrace functionality"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "async f(l) {",
+        "    l(\"f started\");",
+        "    await Chrono.delay(0);",
+        "    l(\"f finished\");",
+        "    42;",
+        "}",
+        "async g(l,next, ...arg) {",
+        "    const r = await next(l,...arg);",
+        "    l(\"delegate finished\");",
+        "    r",
+        "}",
+        "{}",
+        "const r = await g($log, g, g,f);",
+        "$log(\"Finished\", r)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## async do {}"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "`async do {}` helps executing async stuff within sync function or in case result is not to be immediatelly awaited",
+        "",
+        "`async do {`_..._`}` is the same as `(async () => {`_..._`})()` (called async IIFE)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "f(log) {",
+        "    async do {",
+        "        log(\"async start\");",
+        "        await Chrono.delay(10);",
+        "        console.log(\"wait finished\");",
+        "    };",
+        "    log(\"f finished\");",
+        "}",
+        "{}",
+        "f($log);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "The result of `async do` is a promise"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "    let r1 = async do {",
+        "        $log(\"async start 1\");",
+        "        await Chrono.delay(2);",
+        "        $log(\"wait 1 finished\");",
+        "        1",
+        "    };",
+        "    let r2 = async do {",
+        "        $log(\"async start\");",
+        "        await Chrono.delay(1);",
+        "        $log(\"wait 2 finished\");",
+        "        42",
+        "    };",
+        "    await .all(r1,r2);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Sample filter with func prog",
+        "",
+        "TODO: finish example"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "    sample_filter() {",
+        "      const FalseFunc = F.constant(false);",
+        "      function filterTests(tests, suiteFilter) {",
+        "        let suiteFilters = seq( suiteFilter ?? ()).flatMap( f => {",
+        "            if (f?.regexp) {",
+        "                let regexp = new re.Regexp(f.regexp);",
+        "                return item => regexp.exec(string(item.id));",
+        "            }",
+        "            if (let k = f?.kind) return item => isKindMatch(k, item, include);",
+        "            if (let t = f?.tag) return item => isSuiteTag(t, item.suite.tags);",
+        "            if (typeof(f) == @string || typeof(f) == @id) return item => string.eq(item.id, f);",
+        "            return;",
+        "        }).toArray();",
+        "",
+        "        return filter(tests, (item) => any(suiteFilters, call(?, item))).toArray();",
+        "      }",
+        "      let res = filterTests(AllTests, [{regexp: \"Func\"}]);",
+        "      let x=5;",
+        "    }",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## lazy object",
+        "",
+        "`lazy` and `lazyAsync` helps in lazy value calculation. You pass a function to calculate a value and they create a lazy object that delays the calculation of the value to the first access (on-demand). Furthermore `lazyAsync` could handle async initialization. Once the promise settles the resolved value is stored and the function is released."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {lazy, failure} from \"system://core\"",
+        "{}",
+        "const l = lazy(()=> { $log(\"init called\"); 42 });",
+        "$log(\"before\");",
+        "let v = l.value;",
+        "$log(\"after\", v);",
+        "v"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "If the init function fails (returns a failure) and you pass the `@retry` option the init function is retried on subsequent property access.",
+        "",
+        "The `value` property is observable when the initialization might need time such as this case or in case of `lazyAsync`."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {lazy, failure} from \"system://core\"",
+        "import {onChange, observeValue} from \"core://observe\"",
+        "{}",
+        "let fail = true;",
+        "const l = lazy( @retry ,     ()=> { $log(\"init called\"); fail ? failure(\"init failed\") : 42 });",
+        "$log(\"before\");",
+        "let v = l.value;",
+        "let s = observeValue(() => l.value, @noInit).subscribe(v => $log(\"value changed to \", v));",
+        "$log(\"after init\", v);",
+        "$log('allowing init to succeed');",
+        "fail = false;",
+        "v = l.value;",
+        "$log(\"after non-failing init\", v);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "`lazyAsync` can be used to await async init. The `value` property is observable"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {lazyAsync, failure} from \"system://core\"",
+        "import {onChange, observeValue} from \"core://observe\"",
+        "{}",
+        "const l = lazyAsync( async ()=> { $log(\"init called\"); await Chrono.delay(5s); $log(\"init finished\"); 42});",
+        "$log(`before, init ${l.initialized}, ongoing ${l.initializing}`);",
+        "let v = l.value;",
+        "let s = observeValue(() => l.value, @noInit).subscribe(v => $log(\"value changed to \", v));",
+        "$log(`pending value : ${l.value}, init ${l.initialized}, ongoing ${l.initializing}`);",
+        "await Chrono.delay(6s);",
+        "$log(`after, value : ${l.value}, init ${l.initialized}, ongoing ${l.initializing}`);",
+        "l",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Observable"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {observeValue, onChange, Observable, fromGen, fromIter, CancellationTokenSource} from \"core://observe\"",
+        "{}",
+        "const cts = CancellationTokenSource($cancellation);",
+        "observeValue(_=>Chrono.now).subscribe(t=>console.log(t/1000), cts.token);",
+        "await Chrono.delay(5s, $cancellation);",
+        "$log(\"Cancelled\");",
+        "cts.cancel();",
+        "await Chrono.delay(2s, $cancellation)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {Observable, fromGen, fromIter, CancellationTokenSource} from \"core://observe\"",
+        "*iterWlog(i) {",
+        "    for(const v in i) {",
+        "        console.log('yielding:',v);",
+        "        yield v;",
+        "    }",
+        "    console.log(\"finish\");",
+        "}",
+        "{}",
+        "const cts = new CancellationTokenSource;",
+        "//fromIter([1,2,3]).subscribe(v => {console.log(v); if (v>=2) cts.cancel()}, cts.token);",
+        "fromIter(iterWlog([1,2,3])).subscribe(v => {console.log(v); if (v>=2) cts.cancel()}, cts.token)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {Observable, fromGen, fromIter, CancellationTokenSource} from \"core://observe\"",
+        "import {connectable} from \"system://core.observe\"",
+        "{}",
+        "connectable(fromIter(iterWlog([10,20,30]))).subscribe(v=>$log(`Got {v}`));",
+        "undef"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let disp = connectable(fromIter(iterWlog([10,20,30])));",
+        "let s2;",
+        "let s1=disp.subscribe(v=>{",
+        "    $log(`1 Got ${v}`); ",
+        "    if (v==10) {",
+        "        s2=disp.subscribe(v=>",
+        "           $log(`2 Got ${v}`));",
+        "        disp=undef;",
+        "    }});",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { raceWithTimeout } from \"apputils/utils/src/async_utils.xs\"",
+        "{}",
+        "await raceWithTimeout(Chrono.delay(20ms), 321ms)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {observeValue} from \"core://observe\"",
+        "{}",
+        "odict d { prop=0};",
+        "function setAndLog(v) {",
+        "    d.prop = v;",
+        "    $log(\"Set to\", v);",
+        "}",
+        "let s = observeValue(() => d.prop, @noInit).subscribe(v => $log(\"value changed to \", v));",
+        "$log(\"started\");",
+        "setAndLog(1);",
+        "s.withUpdateSuppressed(setAndLog, 2);",
+        "setAndLog(3);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### asyncQueue",
+        "",
+        "asyncQueue converts an observable to an async iterator. "
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {asyncQueue, Observable} from \"core://observe\"",
+        "object obs {",
+        "    listener;",
+        "}",
+        "const obsIf = Observable((listener) => {obs.listener = listener; ()=>{obs.listener=undef}});",
+        "{}",
+        "for await (const v in asyncQueue(obsIf))",
+        "    $log(\"yielded value\", v);",
+        "$log(\"Finished\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Triggering the observable should yield the iterator"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "obs.listener.next(1);obs.listener.next(2);",
+        "await Chrono.delay(0);",
+        "console.log(\"post delay\");",
+        "obs.listener.next(10);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "finishes observable"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "obs.listener.error(\"loszar\")",
+        "//obs.listener.complete(\"loszar\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {filter, firstValueFrom, observeValue, timeout} from \"core://observe\"",
+        "import {id} from \"system://core\"",
+        "object data {",
+        "    connected=false;",
+        "}",
+        "{",
+        "}",
+        "const res = ?? await (observeValue(()=>data.connected) |> filter(id, ^) |> timeout(2s, ^) |> firstValueFrom(^));",
+        "$log(res && \"conntected\");"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "data.connected=true"
+      ]
+    }
+  ]
+}

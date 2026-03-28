@@ -1,0 +1,286 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Xml in xscript",
+        "",
+        "## Reader ",
+        "",
+        "Keszult egy xml reader objectum, amivel vegig lehet olvasni egy xml stringet.",
+        "```javascript",
+        "import {Reader} from \"system://web.xml\"",
+        "```",
+        "Xml egymasba agyazott node-okbol. nodeoknak lehetnek attributumaik. Node-ok kozott text contentek lehetnek.",
+        "Kovetkezo xml node-ra `nextNode()` metodussal leeht lepni, a `depth` propertybol lehett tudni hogy melyebbre, szomszedra vagy szulobe jutottunk.",
+        "Egy node attributumaik `nextAttr()` es `attrValue()`-vla lehet kiolvasni. nextAttr kovetkezo attributumra teker es visszaadja annak nevet. Az attrValue pedig annak erteket."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "hjson-cell",
+      "source": [
+        "{ sandbox: true}"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {attrs, Reader} from \"core/web/xml.xs\"",
+        "",
+        "const rp = new Reader('<!DOCTYPE node PUBLIC",
+        "    \"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN\"",
+        "    \"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">",
+        "    <node>",
+        "      <interface name=\"org.freedesktop.Hal.Device\">",
+        "        <method name=\"GetAllProperties\">",
+        "          <arg name=\"properties\" direction=\"out\" type=\"a{sv}\"/>",
+        "        </method>",
+        "        <signal name=\"PropertyModified\">",
+        "          <arg name=\"num_updates\" type=\"i\"/>",
+        "          <arg name=\"updates\" type=\"a(sbb)\"/>",
+        "        </signal>",
+        "      </interface>",
+        "    </node>');",
+        "",
+        "{}",
+        "let r = rp.copy();",
+        "console.log(r.toChild(),\">\", r.toChild(), \">\", r.toChild(), \">\", r.toChild(), \"on level\", r.depth); // node > interface < method > arg",
+        "console.log(\"attrs: \", attrs(r));",
+        "console.log(\"arg children:\", r.toChild(), r.depth, \"arg sibling: \", r.toSibling(), r.depth); // undef, undef , toSibling \"elevates\" to method",
+        "console.log(\"method sibling:\", r.toSibling(), \">\", r.toChild(), \"on level\", r.depth); // signal > arg",
+        "console.log(\"attrs: \", attrs(r));",
+        "console.log(\"arg children:\", r.toChild(), r.depth, \"arg sibling: \", r.toSibling(), r.depth); // no children, but another arg sibline",
+        "console.log(\"attrs: \", attrs(r));",
+        "console.log(\"arg children:\", r.toChild(), r.depth, \"arg sibling: \", r.toSibling(), r.depth); // no children, no sibling",
+        "console.log(\"signal's sibling:\",r.toSibling(), \"interface's sibling\", r.toSibling());",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## xml node",
+        "",
+        "xmlNode egy node-t reprezental, szolgaltat children iteratort meg attrlist/attr dict -et egy nodehoz.<br>",
+        "Az interface garantalasa miatt sokat masol. Arra gondolok, hogy akarhanyszor lehessen iteratort kernie, nem destruktivan<br>",
+        "",
+        "A pelda a fenti xml-t es `rp`-t hasznalja fel. parent-et nem trivi megcsinalni"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {xmlNode} from \"core/web/xml.xs\"",
+        "{}",
+        "let n = xmlNode(rp).firstChild.firstChild; // > node > interface",
+        "console.log(n.name);",
+        "n = n.firstChild.nextSibling; // interface > method + signal",
+        "console.log(n.name);",
+        "for(const cn in n.children()) {",
+        "    console.log(`<${cn.name} ${cn.attrs}>`);",
+        "    console.log(`with record: <${cn.name} ${cn.attrRec}>`);",
+        "    console.log(\"attr list\", ...cn.attrList());",
+        "}",
+        "42;"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {attrs, Reader, xmlNode} from \"nngfile://xs/core/web/xml.xs\"",
+        "import * as fs from \"system://fs\"",
+        "const fname = \"nngfile://xs/MG-Dealers.kml\";",
+        "{}",
+        "",
+        "//<Placemark><name>A.E.Wilcox and Son</name>",
+        "// <address>Wickwar Garage , High Street , Wickwar, GL12 8NG</address>",
+        "// <phoneNumber>01454 294 213</phoneNumber>",
+        "// <ExtendedData><Data name=WEBSITE><value>http://wilcox.mg.co.uk/</value></Data></ExtendedData>",
+        "// <Point><coordinates>-2.400068,51.595213</coordinates></Point></Placemark>",
+        "",
+        "//using const t = debug.traceBlock();",
+        "const content = fs.readTextFileSync(fname);",
+        "const rp = new Reader(content);",
+        "const pois = [];",
+        "console.time(\"placemark\");",
+        "while(rp.toNextNode(\"Placemark\")) {",
+        "    const n = xmlNode(rp);",
+        "    const offset = n.offset;",
+        "    let name, coordinate;",
+        "    for(const c in n.children()) {",
+        "        if (c.name==\"name\") { name =c.text(); }",
+        "        if (c.name==\"Point\" && c.toChild(\"coordinate\")) { coordinate = c.text(); }",
+        "    }",
+        "    if (name || coordinate)",
+        "        pois.push(#{name, coordinate, offset});",
+        "}",
+        "console.timeEnd(\"placemark\");",
+        "console.log(`Found ${pois.length} placemarks`);",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Much faster parseing (about 7 times)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {attrs, Reader, xmlNode} from \"nngfile://xs/core/web/xml.xs\"",
+        "import * as fs from \"system://fs\"",
+        "import {gcoor} from \"system://core.types\"",
+        "const fname = \"nngfile://xs/MG-Dealers.kml\";",
+        "const pois = [];",
+        "{}",
+        "const content = fs.readTextFileSync(fname);",
+        "const rp = new Reader(content);",
+        "pois.splice(0, undef);",
+        "console.time(\"placemark\");",
+        "while(rp.toNextNode(\"Placemark\")) {",
+        "    const offset = rp.offset;",
+        "    let name, coordinate;",
+        "    const cdep = rp.depth+1;",
+        "    let c;",
+        "    while((c = rp.toNextNode(cdep))) {",
+        "        if(c == \"name\") { name = rp.text(); }",
+        "        else if(c == \"Point\") {",
+        "            if (rp.toChild(\"coordinate\"))",
+        "                coordinate =  gcoor(rp.text(), @lonlat);",
+        "        }",
+        "    }",
+        "    if (name || coordinate)",
+        "        pois.push(#{name, coordinate, data: (offset, rp.offset - offset )});",
+        "}",
+        "console.timeEnd(\"placemark\");",
+        "console.log(`Found ${pois.length} placemarks`);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "",
+        "",
+        "parsePoi(content, poiref) {",
+        "    const rp = new Reader(content, @insideTag, poiref[0], poiref[1]);",
+        "    const poi = {};",
+        "    let c;",
+        "    while((c = rp.toNextNode(1 /* depth start with 0 in the fragment */))) {",
+        "        if(c == \"name\") { poi.name = rp.text(); }",
+        "        else if(c == \"Point\") {",
+        "            if (rp.toChild(\"coordinate\"))",
+        "                poi.position = gcoor(rp.text(), @lonlat);",
+        "        }",
+        "        else if (c== \"phoneNumber\" || c == \"description\" || c==\"address\")",
+        "            poi[c] = rp.text();",
+        "        else if (c == \"ExtendedData\") { // e.g. <Data name=WEBSITE><value>http://wilcox.mg.co.uk/</value></Data>",
+        "            while((c=rp.toNextNode(2,\"Data\"))) {",
+        "                const key = rp.attrValue(\"name\");",
+        "                if (rp.toChild(\"value\"))",
+        "                    poi[key] = rp.text();",
+        "            }",
+        "        }",
+        "    }",
+        "    poi",
+        "}",
+        "{}",
+        "const content = fs.readTextFileSync(fname);",
+        "const poiref = pois[10].data;",
+        "$log(parsePoi(content, pois[10].data));"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as fs from \"system://fs\"",
+        "import {SpatialIndex, Rect, Coord} from \"system://geo\"",
+        "",
+        "async x() {",
+        "    let idx = SpatialIndex.from(pois, @coordinate, @data);",
+        "    let rect = Rect.around(center, distanceInMeter);",
+        "    for(const kmlref in idx.findData(rect)) {",
+        "        const content = await fs.readTextFileSync(fileidToName(kmlref[2]));",
+        "        const poiref = pois[10].data;",
+        "        $log(parsePoi(content, pois[10].data));",
+        "        parsePoi(content, kmlref);",
+        "    }",
+        "}",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {attrs, Reader, xmlNode} from \"nngfile://xs/core/web/xml.xs\"",
+        "import * as fs from \"system://fs\"",
+        "import {list} from \"system://core.types\"",
+        "const fname = \"nngfile://xs/MG-Dealers.kml\";",
+        "{}",
+        "",
+        "//<Placemark><name>A.E.Wilcox and Son</name>",
+        "// <address>Wickwar Garage , High Street , Wickwar, GL12 8NG</address>",
+        "// <phoneNumber>01454 294 213</phoneNumber>",
+        "// <ExtendedData><Data name=WEBSITE><value>http://wilcox.mg.co.uk/</value></Data></ExtendedData>",
+        "// <Point><coordinates>-2.400068,51.595213</coordinates></Point></Placemark>",
+        "",
+        "const content = fs.readTextFileSync(fname);",
+        "const rp = new Reader(content);",
+        "let nn = 0;",
+        "let lst = [];",
+        "while(rp.toNextNode(\"Placemark\")) {",
+        "\tlet data = {};",
+        "    const n = xmlNode(rp);",
+        "    for(const c in n.children()) {",
+        "\t\tif ( c.name == \"name\" ) data.name = c.text();",
+        "\t\tif ( c.name == \"address\" ) data.address = c.text();",
+        "\t\tif ( c.name == \"phoneNumber\" ) data.phoneNumber = c.text();",
+        "\t\tif ( c.name==\"Point\" && c.toChild(\"coordinate\") ) data.geoCoord = c.text();",
+        "\t\tif ( c.name == \"ExtendedData\" ){",
+        "\t\t\tlet eD = xmlNode(c);",
+        "\t\t\tfor(const cc in eD.children()){",
+        "\t\t\t\tif ( cc.name == \"Data\" && cc.attrs?.WEBSITE != undef) data.website = cc.nextNodeOf(\"value\").text();",
+        "\t\t\t\tif ( cc.name == \"Data\" && cc.attrs?.EMAIL != undef ) data.email = cc.nextNodeOf(\"value\").text();",
+        "\t\t\t}",
+        "\t\t}",
+        "    }",
+        "\tlst.push(data);",
+        "    if (++nn > 10)break;",
+        "}",
+        "return lst;"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {Reader} from \"system://web.xml\"",
+        "{}",
+        "(new Reader(\"alma &#x66;a\")).text()"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {attrs, Reader, xmlNode} from \"core/web/xml.xs\"",
+        "{}",
+        "const r = Reader(\"<p><p>kutya</p>macska</p>\");",
+        "do {",
+        "    $log(r.text());",
+        "} while(r.toNextMarkup());"
+      ]
+    }
+  ]
+}

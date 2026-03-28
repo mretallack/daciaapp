@@ -1,0 +1,131 @@
+import { app, config } from "./app.xs"
+import {} from "./keyboard.nss.xs"
+import {} from "./app.nss.xs"
+import { basket } from "./basket.xs"
+import {mediaQuery} from "./mediaQuery.xs"
+import { toastController } from "~/src/components/toasts.xs"
+import {getImage} from "system://ui.resource"
+import { headUnit } from "./toolbox/connections.xs"
+import {LabMenuActivator, labSettings} from "./lab.ui"?
+import {messageBoxController, Messagebox, Button} from "./components/messageboxes.xs"
+import {mockKeyboard} from "./utils/inputFocusScroll.xs"
+import {i18n} from "system://i18n"
+import {fmt} from "fmt/formatProvider.xs"
+import {openUrl} from "./utils/util.xs"
+import * as androidApp from "android://app"?
+import inputFocus from "uie/input/inputFocus.xs"
+import {packageManager} from "./toolbox/packages/packageModel.xs"
+import * as os from "system://os"
+
+const labActivator = LabMenuActivator ? new LabMenuActivator({numTaps : 7, maxTapDelay:800}) : undef;
+
+export <fragment frNotification class=fill controller=(messageBoxController) />
+export <fragment frToasts class=fill controller=(toastController) />
+
+controller keyboardController{
+	state = stKeyboard;
+}
+
+state stKeyboard {
+	use = frKeyboard;
+}
+
+<fragment frKeyboard class=fill, flexible, vertical>
+	<keyboard class=fill lang=@english/>
+</fragment>
+
+export <fragment frApplication class=main paddingTop=(mediaQuery.headerPadding) paddingBottom=(mediaQuery.footerPadding)
+    onShow() { mockKeyboard.init(this.window); } >
+    own {
+        let menuList = ([...Iter.filter( (item)=>{item.menu==true}, app.lMenu )]);
+        let activeItem := ??app.currentScreen;
+        let title := activeItem?.title ?? undef;
+        let backVisible = ( app?.contentController?.queue?.length > 1 || app?.contentController?.current?.backVisible );
+        let isInputActive = ( inputFocus.getInputFocus(fragment.head.window) != undef );
+        let showSoftKeyboard = ( labSettings?.softKeyboard.val && isInputActive );
+        let origH = do{fragment.head.window.styles.param.height};
+        let showHeaderAndFooter = (mediaQuery.footerPadding <= (0.3 * origH) && !showSoftKeyboard);
+        let templates = { Cart: tCart, Maps: tMaps };
+        
+        <template tMenuItem class=footerMenuItem  onRelease(){ app.selectScreen(item) } enable=( app.screenIdx != index ) >
+            <sprite class=menu, icon, normal, fill img=(item.icon) />
+            <sprite class=selectionMarker/>
+        </template>
+
+        <template tCart class=footerMenuItem  onRelease(){ app.selectScreen(item); labActivator?.tap() } >
+            <sprite class=menu, icon, normal, fill img=(item.icon)>
+            <sprite class=menuKnob,basket visible=(basket.size)>
+            <sprite class=selectionMarker/>
+        </template>
+
+        <template tMaps class=footerMenuItem  onRelease(){ app.selectScreen(item) } >
+            <sprite class=menu, icon, normal, fill img=(item.icon)>
+            <sprite class=menuKnob, maps visible=(packageManager.hasUpdate)>
+            <sprite class=selectionMarker/>
+        </template>
+    }
+    <sprite bg class=@fill position=@absolute/>
+    <group header class=flexible,horizontal visible=( ??title && showHeaderAndFooter ) >
+        <sprite class=lineSeparator>
+        <sprite class=headerIcon, headerBack opacity=( backVisible ? 1 : 0 ) enable=( backVisible ) onRelease(){ app.back() }>
+        <spacer flex=1 />
+        <text class=button,mianTitle text=(title) />
+        <spacer flex=1 />
+        <sprite status class=(@headerIcon, @status, headUnit?.connected ? @connected : @disconnected ) onRelease(){ app.next(@CarList) }>
+    </group>
+    <group class=flexible,vertical,properties flex=1 controller=(app.contentController)/>
+    <group class = flexible, horizontal, footer visible=( showHeaderAndFooter ) >
+        <sprite class=bg, topLine />
+        <lister class=fill model=(menuList) template=(tMenuItem) selectedItems=(app.screenIdx) templateType() { templates[item?.id] ?? @default }/>
+    </group>
+    <group class=keyboard,flexible controller=(keyboardController) visible=( showSoftKeyboard ) />
+</fragment>
+
+export <fragment frListCardBase class=flexible, vertical boxAlign=@stretch flex=1 >
+	own {
+		let emptyText = "Empty";
+		let emptyVisible = false;
+		let emptyImage = "";
+		let loading = false;
+	}
+
+    <includeChildren />
+	<group class=flexible, vertical, extraHugePaddingX, mainPaddingY, emptyResult visible=( emptyVisible || loading )>
+		<spacer flex=5 />
+		<sprite class=icon, big, noResults img=( emptyImage ) visible=( emptyVisible && !loading ) />
+		<sprite class=icon, extraLarge, loading, animated visible=( loading )>
+		<text class=paragraph, threeline, noResults text=( emptyText ) visible=( emptyVisible && !loading ) />
+		<spacer flex=4 />
+	</group>
+</fragment>
+
+export showMandatoryUpdateNoti(){
+	let noti = new Messagebox;
+	noti.addLine(i18n`This version of the application is no longer supported!`)
+	.setOverlay()
+	.addIcon( "msgbox_warning.svg" )
+    // TODO(ios): missing link for App Store
+    // for opening google play store see: https://developer.android.com/distribute/marketing-tools/linking-to-google-play#android-app
+	.addButton( new Button({text:i18n`Update app`, action: _ => openUrl(`https://play.google.com/store/apps/details?id=${androidApp.packageName ?? "com.nng.yellowbox.naviextras"}`) }) );
+	noti.show();
+}
+
+export showFailedToListen(port, error){
+    let noti = new Messagebox;
+    noti.setSecondLineStyle(@secondLine, @secondLinePaddings);
+    noti.addLine(i18n`We've detected that another application is interfering with Map Update.`)
+    .addLine(i18n`Try to close other running application until the problem resolves.`)
+    .setOverlay()
+    .addIcon( "msgbox_warning.svg" )
+    .addButton( new Button({ text : i18n`Ok` }) );
+    noti.show();
+}
+
+@onStart
+setAppIcon() {
+    if (os.platform == "win32" || os.platform == "linux")   
+    {
+        const appIcon = getImage("nngfile://app/yellowbox/res/common/nodpi/location2_icon.png");
+        screen.root.icon = appIcon;
+    }
+}

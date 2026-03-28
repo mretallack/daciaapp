@@ -1,0 +1,181 @@
+import {@registerStyle} from "uie/styles.xs"
+import {state} from "system://core.types"
+import {mediaQuery} from "~/src/mediaQuery.xs"
+
+export controller dropDownController;
+export <fragment frDropDownFragment class=fill controller=(dropDownController) />
+
+// DropDown, DropUp
+export <component dropMenu class=flexible, horizontal 
+    defaults={ 
+        img: "chevron.svg", 
+        onChangeFunc: ( () => {} ),
+        title: "", 
+        dir: @up,
+        templateItem: tDropDownSimpleItem,
+        templateMenu: tDropMenuSimple,
+        defaultH: 40,
+        labelFieldH: 56,
+        labelFieldValign: @bottom,
+    }
+    onRelease() { 
+        showDropDownList(attributes, fragment.head); 
+    }>
+    own {
+        export let value;
+        let hasValue = (value!=undef && value!="");
+        let title = (hasValue ? attributes.title : "");
+        let valueForTemplate = (hasValue ? value : attributes.title);
+    }
+    <group labelField class=flexible, vertical>
+        <sprite labelBg class=bg />
+        <group class=flexible, horizontal, dropMenuLabel flex=1 visible=1>
+            <text class=label text=(title) wordWrap=1 align=@left />
+        </group>
+        <group class=flexible, horizontal, dropRight flex=1 paddingBottom=10>
+            <lister class=fill model=([valueForTemplate]) template=(attributes.templateMenu) 
+                templateType() { hasValue ? @default : tDropMenuSimple } 
+                param=({hasValue : hasValue}) />
+            <includeChildren />
+            <spacer flex=1 />
+            <sprite class=dropMenuIcon />
+        </group>
+    </group>
+</component>
+
+<template tDropMenuSimple h=100% boxAlign=@stretch>
+    <text class=(@paragraph, param.hasValue ? @normalColor: @emptyColor) paddingBottom=(param.hasValue ? 0 : 10) text=(item) wordWrap=1 maxW=200 align=@left />
+</template>
+
+odict data{
+    x=0;
+    w=0;
+    bottom=undef;
+    top=undef;
+    dir=@up;
+    align=@bottom;
+}
+
+showDropDownList(attributes, widget) {
+    const items = attributes.items;
+    calcPositions(widget, attributes.dir, attributes.defaultH);
+    let stListState = new state({
+        use: (frDropMenuOverlay, frDropDownList), 
+        items, 
+        onChangeFunc: attributes.onChangeFunc, 
+        template: attributes.templateItem,
+        dropMenu: widget,
+    });
+	dropDownController.next(stListState);
+}
+
+calcPositions( widget, dir = @auto, defaultH ){
+    let direction = dir;
+    data.x = widget.screenX;
+    data.w = widget.w;
+    data.dir = dir;
+    if (direction == @auto ){
+        let winH = widget.window.h - mediaQuery.headerPadding - mediaQuery.footerPadding;
+        let wPosition = widget.screenY + widget.h / 2 - mediaQuery.headerPadding;
+        if ( wPosition >= winH / 2 ){
+            direction = @up
+        } else 
+            direction = @down
+    }
+    if (direction == @up) {
+        data.top = 10% + mediaQuery.headerPadding;
+        data.bottom = 100% - widget.screenY;
+        data.align = @bottom;
+    } else if ( direction == @down ){
+        data.bottom = 10% + mediaQuery.footerPadding;
+        data.top = widget.screenY + widget.h;
+        data.align = @top;
+    }
+}
+
+<fragment frDropMenuOverlay class=(@fill, @shown) >
+	<sprite class=fill,bg,faded onRelease(){ dropDownController.prev(); } />
+</fragment>
+
+export <template tDropDownItem class=flexible,horizontal >
+    <group class=flexible,horizontal,mainPadding onRelease(){
+        // todo: nem kattinthato az egesz a padding resze
+        param.controller.current.onChangeFunc(item);
+        param.controller.current.dropMenu.value = item;
+        param.controller.prev();
+    }>
+        <sprite class=(item==param.controller.current.dropMenu.value ? @bgSelected : @bg) />
+        <includeChildren />
+    </group>
+</template>
+
+<template tDropDownSimpleItem extends=tDropDownItem>
+    <text class=detail fontSize=16 maxW=200 text=(item) />
+    <spacer flex=1 />
+</template>
+
+<fragment frDropDownList /*class=flexible,vertical*/ left=(data.x) w=(data.w) top=(data.top) bottom=(data.bottom) valign=@bottom>
+    own {
+		let items := controller.current.items;
+    }
+    <listView flex=1 class=fill model=( items ) valign=(data.align) template=(controller.current.template) param={controller: controller} compact=true >
+    <sprite class=bg position=@fixed z=-1/>
+        <wheel/>
+        <scroll/>
+    </listView>
+</fragment>
+
+
+@registerStyle
+style dropMenuStyle {
+    @declare {
+		chevronSize: 18;
+	}
+
+    dropMenu {
+        component: dropMenu;
+    }
+
+    #labelField {
+        desiredH: ( attributes.labelFieldH );
+        valign: ( attributes.labelFieldValign );
+    }
+
+    #labelBg {
+        img: inputBg;
+    }
+
+    group.dropMenuLabel {
+        boxAlign: @center;
+        align: @left;
+        maxW: 200;
+    }
+
+    group.dropRight {
+         boxAlign: @center;
+         align: @right;
+    }
+
+    sprite.dropMenuIcon {
+        img: ( attributes.img );
+        rotate: ( attributes.dir == @up ? 180.0 : 0.0 );
+        imageW: chevronSize;
+        imageH: chevronSize;
+        params: ({ color: colors.black });
+        paddingLeft: const(paddings.xs);
+    }
+
+    sprite.dropMenuIcon:disabled {
+        img: undef;
+        visible: 0;
+        // params: ({ color: colors.darkGrey });
+    }
+
+    text.emptyColor {
+        color: const(colors.label);
+    }
+
+    text.normalColor {
+        color: const(colors.black);
+    }
+}

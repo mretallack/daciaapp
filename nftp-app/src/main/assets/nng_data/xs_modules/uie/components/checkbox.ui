@@ -1,0 +1,39 @@
+import { @registerStyle } from "uie/styles.xs"
+
+@registerStyle
+style checkboxStyles {
+	component#checkbox sprite.chkImg {
+		boxAlign: "center";
+		phaseName: ( attributes.phaseName ?? "off" );
+		img: ( attributes.icon ?? ({ borderRadius: [4], img:#000000, borderImg: #ffffff, borderWidth: 2 }) ) ;
+	}
+
+	component#checkbox:checked sprite.chkImg {
+		phaseName: "on";
+		img: (  attributes.icon ?? ({ borderRadius: [4], img:#ffffff, borderImg: #ffffff, borderWidth: 2 }) );
+	}	
+}
+
+/** 
+* Component for represent a button
+* Because of the includeChildren you can insert any widget before or after the sprite of the checkbox
+* @param icon image for checkbox visualization, on and off phase needed
+* @param iconH the checkbox icon height
+* @param iconW the checkbox icon width
+* @param bg backgorund color of the checkbox
+* @phaseName phaseName of the radio image
+**/
+
+//img: ;
+export default
+<component checkbox layout=@flex defaults={ iconH: 30, iconW: 30 }>
+	onBeforeRelease() {
+		invert(fragment.head.checked);
+	}
+	
+	<sprite bg class="fill" position="absolute" attributes={ img: bg, paddingLeft: bgPaddingLeft, paddingRight: bgPaddingRight, default: true } />
+
+	<includeChildren filter=".beforeIcon"/>
+	<sprite class="chkImg" attributes={ default: true, img: icon, imageW: iconW, imageH: iconH }/>
+	<includeChildren />
+</component>

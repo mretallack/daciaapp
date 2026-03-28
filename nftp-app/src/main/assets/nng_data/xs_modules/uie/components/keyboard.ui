@@ -1,0 +1,496 @@
+import * as keyLib from "uie/input/keyboardLib.xs";
+import inputFocus from "uie/input/inputFocus.xs"
+import input from "uie/components/inputComponent.ui"
+import nearestStrategy from "system://uie.focus.search.nearest"
+import { bindProperty, unbindProperty, observe, observeValue } from "system://core.observe"
+import { typeof } from "system://core"
+import * as os from "system://os"
+import * as droid from "android://softInput"?
+import {void} from "core://functional"
+
+enum ShiftState {
+	UNPRESSED,
+	PRESSED,   
+}
+
+class KeyboardManager {
+	window;
+	kbd;
+	mainKeyboard;
+	language;
+	shiftState;
+	validChars=""; // todo: is placed here to replace validchars coming from inputContext (currently in softkey)
+	#inputFocusSubscription;
+	#inputLengthSubscription;
+	currentInputRef;
+	data; // user provided data
+
+	changeKeyboard(newKeyboard) {
+		this.kbd = weak(newKeyboard);
+	}
+
+	constructor(window, selectedLanguage = @english ) {
+		this.language = selectedLanguage;
+		this.setMainKeyboard( KeyboardManager.keyboardsByType[selectedLanguage].text );
+	}
+
+	setMainKeyboard( kbd ) {
+		this.kbd = kbd;
+		this.mainKeyboard = kbd;
+	}
+
+	start(window) {
+		this.window = weak(window);
+		let thiz = weak(this);
+		
+		let subsInputFocus = (s, input) => {
+			if (input == @closed)
+				s.cancel();
+			else if (input?.tagName == "input") {
+				thiz.selectKeyboard(thiz.language, input.type);
+				thiz.data = input.userData ?? undef;
+				bindProperty( thiz, @currentInputRef, _ => ref(input.value) );
+			}
+		};
+
+		thiz.#inputFocusSubscription = observe(() => { ??inputFocus.getInputFocus(thiz.window) /* ?? @closed: todo why doesn't refresh?*/})
+										   .subscribeScoped( subsInputFocus );
+
+		let subsInputLength = ( s, val ) => {
+			if ( ??val )
+				thiz.shiftState = ShiftState.UNPRESSED;
+			else
+				thiz.shiftState = ShiftState.PRESSED;
+		};
+
+		thiz.#inputLengthSubscription = observe( _ => ??thiz.currentInputRef.value.length ).subscribeScoped( subsInputLength ); 
+	}
+
+	stop() {
+		this.window = undef;
+		if( this.#inputFocusSubscription ){
+			this.#inputFocusSubscription.cancel();
+			this.#inputFocusSubscription = undef;
+		}
+		if( this.#inputLengthSubscription ){
+			this.#inputLengthSubscription.cancel();
+			this.#inputLengthSubscription = undef;
+		}
+		unbindProperty( this, @currentInputRef );
+	}
+
+	changeLanguage( language ) {
+		this.selectKeyboard( language, input.type ?? @text );
+		this.language = language;
+	}
+
+   shiftPressed() {
+		if ( this.shiftState == ShiftState.PRESSED )
+			this.shiftState = ShiftState.UNPRESSED;
+		else
+			this.shiftState = ShiftState.PRESSED;
+	}
+
+	static keyboardsByType = { 
+		english : {
+			text: (weak(keyLib.qwerty)),
+			email: (weak(keyLib.qwertyEmail))
+		},
+
+		russian : {
+			text: (weak(keyLib.russian)),
+		},
+		arabic: {
+			text: (weak(keyLib.arabic)),
+		}
+	}
+
+	selectKeyboard( language=this.language, inputType=@text) {
+		var kbd = KeyboardManager.keyboardsByType[language][inputType] ?? weak(keyLib.qwerty);
+		this.setMainKeyboard( kbd );
+	}
+}
+
+const keyIcons = {
+	// speckeys:
+	backspace: { name: "icons/backspace.svg", hpercent: 90},
+	shift: { name: "icons/shift.svg", hpercent: 60} ,
+	// actions:
+	base: {name: "icons/done.svg"},
+	hide: {name: "icons/keyboard_hide.svg", hpercent: 130},
+	changeLanguage: {name:"icons/globe.svg", hpercent: 75 },
+};
+
+// --template for keyboard buttons
+<template keyBtn class=(@horizontal, keyKind == @keyboard ? @keyboard : @standard) layout=@flex>
+	own {
+		let keyKind = (keyLib.getKindOfKey(item));
+		let txt = ( keyLib.getLabelFor(item, param.manager.mainKeyboard, param.manager.shiftState));
+		let smallButton = (param.manager.kbd.smallButtons ?? false);
+	}
+	<button class=(@keyButton, smallButton ? @btn_sm : "", keyKind == @keyboard ? @keyboard : @standard ) text= (txt)
+		enable=( (len(param.manager.validChars) && X.typeof(item) == @string) ? param.manager.validChars.indexOf(item) >= 0 : true)
+		onRelease(){
+			var target = inputFocus.getInputFocus(this.window);
+			if ( target )
+				keyLib.keyPressed( (typeof(item) == @string ? txt : item), 
+									{ changeKeyboard: param.manager.changeKeyboard(?), 
+									  action: param.action, mainKeyboard: (param.manager.mainKeyboard),
+									  target }); 
+		}
+	>
+</template>
+
+<template spaceBtn class=horizontal>
+	<button class=keyButton, space text=(param.manager.kbd.keyboardLabel ?? "")
+		onRelease(){
+			keyLib.keyPressed(item, { target: inputFocus.getInputFocus(this.window) });
+		}
+	>
+</template>	
+
+<template shiftBtn class=horizontal>
+	own {
+		let icon = (keyIcons[item.action ?? item]);
+	}
+	<button class=keyButton, shift
+		onRelease(){ param.manager.shiftPressed() }
+	>
+		<sprite class=icon imageH=(30 * (icon.hpercent ?? 100) / 100) img=(icon.name) />
+	</button>
+</template>
+
+<template specBtn class=horizontal >
+	own {
+		let icon = (keyIcons[item.action ?? item]);
+	}
+	<button class=keyButton, spec
+		enable=((??item.action == @base) ? (param.manager.data && param.manager.data.valid ) : true) // default action is enabled based on data's validity
+		onRelease(){
+			keyLib.keyPressed(item, { target: inputFocus.getInputFocus(this.window), action: param.action,  });
+		}
+	>
+		<sprite class=icon imageH=(30 * (icon.hpercent ?? 100) / 100) img=(icon.name) /> // item may be an action or a speckey id
+	</button>
+</template>
+
+<template backspaceBtn class=horizontal >
+	own {
+		let icon = (keyIcons[item]);
+		let repeatCount=0;
+	}
+	<button class=keyButton, backspace repeatEnabled=1
+		onRelease(){
+			if (repeatCount == 0) // only perform one more delete, if click wasn't repeated
+				keyLib.keyPressed(item, { target: inputFocus.getInputFocus(this.window)  });
+		}
+		onClick() {
+			repeatCount = event.repeat??0;
+			if (repeatCount > 0) 
+				keyLib.keyPressed(item, { target: inputFocus.getInputFocus(this.window)  });
+		}
+	>
+		<sprite class=icon imageH=(30 * (icon.hpercent ?? 100) / 100) img=(icon.name) /> 
+	</button>
+</template>
+
+getKeyTemplateType(keyKind, key) {
+	if (keyKind == @speckey && key == @space) spaceBtn;
+	else if (keyKind == @speckey && key == @backspace) backspaceBtn;
+	else if ( keyKind == @speckey && key == @shift ) shiftBtn;
+	else if (keyKind == @speckey || keyKind == @action) specBtn;
+	else keyBtn;
+}
+
+// --template for keyboard row
+<template keyRow class=fill layout=@flex orientation=@horizontal boxAlign=@center> // flex=1>
+	<lister template=keyBtn model=(item) param=(param) templateType() { getKeyTemplateType(keyLib.getKindOfKey(item), item); } />
+</template>
+
+class FormValidators {
+	static validate_text(value) {
+		return len(value) >= 3; 
+	}
+
+	static validate_email(value) {
+		var reObj = new re.Regexp("[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])", "i");
+		var res = reObj.exec(value);
+		if (res) for (var m in res.matches) {
+			if (m == value) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+enum Direction {
+	None = 0,
+	Left = 1,
+	Right = 2,
+	Up = 3,
+	Down = 4,
+}
+
+export default <component keyboard class=fill, keyboard layout=@flex defaults={ buttonBg: #00adbc, fontSize:28, fontColor:#fff, transitionTime:0.5s, padding:5, lang:@english } 
+		onShow() { kbdManager.start( this.window ); } 
+		onHide() { kbdManager.stop(); } 
+>
+	own {
+		let kbdManager=new KeyboardManager(undef, ??attributes.lang);
+		let strategy= new nearestStrategy();
+		actionPressed(actionType, target) {
+			if ( ! ??target ) {
+				return;
+			}
+
+			if (actionType == @hide)
+				inputFocus.setInputFocus(undef, target.window);
+			elsif (actionType == @changeLanguage) {
+				// todo rendesen megcsinalni, felnyilo listaval
+				if ( kbdManager.language == @english ) {
+					kbdManager.changeLanguage( @russian );
+				}
+				else if ( kbdManager.language == @russian )
+					kbdManager.changeLanguage( @arabic );
+				else
+					kbdManager.changeLanguage( @english );
+			}
+			else {
+				console.log("action pressed on : ", target.value);
+				var nextField = strategy.findNext(target.window, target, Direction.Down, "input");
+				if (nextField != undef) {
+					inputFocus.setInputFocus(nextField); // move to next field
+				} else {
+					inputFocus.setInputFocus(undef, target.window); // hide kbd.
+					console.log("Registration succeeded !");
+				}
+			}
+		}
+	}
+	<vbox class=fill
+		  bottom=((inputFocus.getInputFocus(this.window))?0:(-1*fragment.head.h))
+		  top=((inputFocus.getInputFocus(this.window))?0:(fragment.head.h))
+		  opacity=((inputFocus.getInputFocus(this.window))?100%:0) 
+		  transition=([ (@top, attributes.transitionTime), (@bottom, attributes.transitionTime), (@opacity, attributes.transitionTime) ])
+		  //onAnimationFinished(){ fragment.head.visible=( inputFocus.getInputFocus(this.window) )}
+	>
+		<sprite class=bg attributes={ img:bg } > 
+		<lister template=keyRow model=(kbdManager.kbd.rows) param={manager: kbdManager, action: actionPressed, attr: attributes} />
+	</vbox>
+</component>
+
+const EditProps = droid?.EditorInfo.staticProps;
+droidImeOptions(kind) {
+	// EditProps: IME_ACTION_DONE:6, IME_ACTION_GO:2, IME_ACTION_NEXT:5, IME_ACTION_NONE:1, IME_ACTION_PREVIOUS:7, IME_ACTION_SEARCH:3, IME_ACTION_SEND:4, IME_ACTION_UNSPECIFIED:0,
+	if (kind == @none)
+		EditProps.IME_ACTION_NONE;
+	else if (kind == @next)
+		EditProps.IME_ACTION_NEXT;
+	else if (kind == @prev)
+		EditProps.IME_ACTION_PREVIOUS;
+	else if (kind == @search)
+		EditProps.IME_ACTION_SEARCH;
+	else if (kind == @send)
+		EditProps.IME_ACTION_SEND;
+	else if (kind == @go)
+		EditProps.IME_ACTION_GO;
+	else if (kind == @done)
+		EditProps.IME_ACTION_DONE;
+	else
+		EditProps.IME_ACTION_UNSPECIFIED;
+}
+
+droidEditInfoFor(obj) {
+	// EditProps: IME_ACTION_DONE:6, IME_ACTION_GO:2, IME_ACTION_NEXT:5, IME_ACTION_NONE:1, IME_ACTION_PREVIOUS:7, IME_ACTION_SEARCH:3, IME_ACTION_SEND:4, IME_ACTION_UNSPECIFIED:0,
+	// TYPE_CLASS_DATETIME:4, TYPE_CLASS_NUMBER:2, TYPE_CLASS_PHONE:3, TYPE_CLASS_TEXT:1, 
+	// TYPE_DATETIME_VARIATION_DATE:16, TYPE_DATETIME_VARIATION_NORMAL:0, TYPE_DATETIME_VARIATION_TIME:32, TYPE_MASK_CLASS:15, TYPE_MASK_FLAGS:16773120, TYPE_MASK_VARIATION:4080, 
+	// TYPE_NULL:0, TYPE_NUMBER_FLAG_DECIMAL:8192, TYPE_NUMBER_FLAG_SIGNED:4096,
+	//  TYPE_TEXT_VARIATION_EMAIL_ADDRESS:32, TYPE_TEXT_VARIATION_EMAIL_SUBJECT:48,
+	// TYPE_TEXT_VARIATION_POSTAL_ADDRESS:112, TYPE_TEXT_VARIATION_SHORT_MESSAGE:64, TYPE_TEXT_VARIATION_URI:16, TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+	const type = obj.type;
+	let inputType = type == @number ? EditProps.TYPE_CLASS_NUMBER : EditProps.TYPE_CLASS_TEXT;
+	if (obj?.passwordSmartphone)
+		inputType += EditProps.TYPE_TEXT_VARIATION_WEB_PASSWORD ?? EditProps.TYPE_TEXT_VARIATION_PASSWORD ?? 0;
+	if (type == @email)
+		inputType += EditProps.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS ?? EditProps.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ?? 0;
+	else if (type == @address)
+		inputType += EditProps.TYPE_TEXT_VARIATION_POSTAL_ADDRESS ?? 0;
+	else if (type == @uri)
+		inputType += EditProps.TYPE_TEXT_VARIATION_URI??0;
+//		else if (inputType == @password && !obj?.passwordSmartphone)
+//			inputType += TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ?? 0;
+	else if (type == @name)
+		inputType += EditProps.TYPE_TEXT_PERSON_NAME??0;
+	let imeOptions = droidImeOptions(obj?.actionHint);
+	imeOptions += 0x02000000; // no fullscreen
+	imeOptions += 0x10000000; // no extract ui
+	droid.EditorInfoWithInput.fromEntries(#{imeOptions, inputType, hintText: obj?.empty ?? Symbol.NoProperty,
+		                                    text: obj?.value ?? "", cursor: obj?.context.cursorPos});
+}
+
+loggerFunc(enabled) { enabled ? console.log(?) : void; }
+eventHandler(enabled) { enabled ? console.log('ICEvent:', ?): undef}
+
+// todo: handle multiple input, one for each window
+@dispose
+export object androidKeyboardManager { // exported for debugging
+	@dispose
+    #subs;
+
+	get softInput() {
+		return droid;
+	}
+
+    init(event) {
+        this.#subs = event.subscribe((name, obj, oldFocused, myData) => {
+        	if (name == @InputFocusRequested) {
+            	this.onInputFocusRequested(obj, oldFocused, myData);
+        	}
+		});
+    }
+
+    needKeyboard(obj) {
+        return !!obj?.context?.ime;
+    }
+
+    onInputFocusRequested(obj, oldFocused, myData) {
+		if (myData?.hasIc && oldFocused == obj) {
+			if (obj)
+				droid?.showKeyboard(obj.window.nativeWindow);
+			return;
+		}
+
+		if (this.needKeyboard(obj)) {
+			this.openKeyboardFor(obj);
+        } else {
+			if (myData)
+				myData.hasIc = false;
+			if (oldFocused)
+            	droid?.hideKeyboard(oldFocused.window.nativeWindow, true);
+        }
+    }
+	openKeyboardFor(obj, forceShow) {
+		const nwin = obj.window.nativeWindow;
+		if (SysConfig.get("debug", "useAndroidInputConnection", true)) {
+			droid?.showKeyboard(nwin, droidEditInfoFor(obj), 
+			   new DroidInputConnection(obj),
+			   eventHandler(SysConfig.get("debug", "logAndroidInput", false))); 
+		} else
+			droid?.showKeyboard(nwin)
+	}
+}
+
+export class DroidInputConnection
+{
+	// droid interface
+	ic; // droid input connection
+	#inputFocus;
+	@dispose
+	#inputSubs;
+
+	constructor(obj) {
+		obj.context.ime.use_decompose=false;
+		this.#inputFocus = obj;
+		const ctx = obj?.context;
+		this.#inputSubs = observeValue(()=>{ctx.cursorPos, ctx.inputString}, @noInit).subscribe((newPos, text) => {
+			if (!this.ic || !this.#inputFocus)
+					return;
+			this.log("Updating cursor");
+			this.ic.updateCursorAndText(newPos, text);
+		});
+	}
+	requestUpdate() {
+		if (!this.ic) return;
+		if (const ctx = this.#inputFocus?.context)
+			this.ic.updateCursorAndText(ctx.cursorPos, ctx.inputString);
+		else
+			this.ic.updateCursorAndText(-1, "");
+	}
+
+	resetIC() {
+		if (this.#inputFocus)
+			inputFocus.setNativeDataForInput(this.#inputFocus, undef);
+		this.#inputSubs.cancel();
+		this.ic =undef;
+	}
+
+	onBack() {
+		this.resetIC();
+	}
+	onCreated( ic, info ) {
+        this.ic = ic;
+        this.log("droid input connection created");
+		inputFocus.setNativeDataForInput(this.#inputFocus, {hasIc: true});
+		const ctx = this.#inputFocus?.context;
+		this.#inputSubs = observeValue(()=>{ctx.cursorPos, ctx.inputString}, @noInit).subscribe((newPos, text) => {
+			if (!this.ic || !this.#inputFocus)
+					return;
+			this.log("Updating cursor");
+			this.ic.updateCursorAndText(newPos, text);
+		});
+
+    }
+	closeConnection(ic) {
+		this.log(`droid ${this.ic == ic ? "current" : "old"} connection closed`);
+		if (ic == this.ic)
+			this.resetIC();
+	}
+	setSelection(start,end) { 
+		if (start == end)
+			this.updateInput(t=>t.context.cursorPos = end)
+	}
+	updateInput(block) {
+        if (const t =this.#inputFocus)
+			this.#inputSubs.withUpdateSuppressed(block, t);
+	}
+    deleteSurroundingText(before,after, origCurPos) {
+        this.log("delete surrounding", before, after, origCurPos);
+		this.updateInput(t=>t.deleteSurrounding(before,after, origCurPos));
+    }
+	deleteSurroundingTextInCodePoints(before,after, origCurPo) {
+        this.log("delete surrounding codepoints", before, after, origCurPo);
+		this.updateInput(t=>t.deleteSurrounding(before,after, origCurPo)); // TODO: support code points once text can handle emojis
+	}
+    replace(from,end, text, cursorPos) {
+        this.log("replace", from, end, text, cursorPos);
+		this.updateInput(t=>t.replace(from, end, text, cursorPos));
+    }
+	performEditorAction(actId) {
+		this.ic = undef; // reset ic so that next clik will open keyboard
+	    Events.simulateRawKey(screen.root, 13, evt.action == 0 ? 1 : 2);
+	}
+
+    onKeyEvent(evt) {
+        // keyevent is normaly only sent when BasicInputconnection is not in fullEdit mode. 
+        // However, there are some keys (numeric) that doesn't seem to be commited
+        if (evt.igoKey != undef) {
+            this.log(`Raw key ${evt.igoKey} (action: ${evt.action})`);
+            // evt.igokey == 8 is backspace, probably it should be ignored right after deleteSurroundingText
+            Events.simulateRawKey(screen.root, evt.igoKey, evt.action == 0 ? 1 : 2);
+            return
+        }
+		// probably only relevant for null input type
+        if (evt.action == 1 || !this.#inputFocus) // ignore up
+            return;
+        this.log("keyevent", evt);
+        if (evt.charCode) {
+            this.#inputFocus.keyPressed(string.fromCharCode(evt.charCode))
+        } else if (evt.chars) {
+            this.#inputFocus.appendText(evt.chars, undef)
+        }
+    }
+	log = do { loggerFunc(SysConfig.get("debug", "logAndroidInput", false)) }
+	enableLogging(enabled) { this.log = loggerFunc(enabled); this.ic.eventHandler = eventHandler(enabled); }
+	onError(err) { console.log("InputConnection error", err)}
+}
+
+@onLoad
+load() {
+    if (os.platform == "android") {
+        androidKeyboardManager.init(inputFocus.getEvent());
+    } else if (os.platform == "ios") {
+		// activate ios keyboard manager and paste helper
+		sysImport("uie/input/iosSoftInput.xs");
+	}
+}

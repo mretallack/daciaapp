@@ -1,0 +1,1077 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Hello xsbook"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Section 1",
+        "",
+        "Xsbook cellak eleje tartalmazhat module definiciokat. Ezek a definiciok elerhetoek a tobbi cella szamara.",
+        "",
+        "A teljes xsbook igazandibol egy modulet definial es a scriptek ennek a modulenak a contextusaban futnak",
+        "",
+        "Module definicion felulbiralhatoak"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const kutya=48;",
+        "async runK(m) {",
+        "    await 1;",
+        "    return kutya+m+m",
+        "}"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "// there are some unresolved ambigouity between func call and func declaration ",
+        "{}",
+        "runK(2)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Checking output types",
+        "In this section we have cells with structured output. we should get similar results as from the debug console"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{alma: 5, items:[\"alma\", \"korte\", 10]}"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Getting screenshot"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "debug.screenshot(0);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Can get partial screenshot"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "debug.screenshot({display:0, left: 80, top: 30, w:100, h:100});"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Screenshot can be stored locally to be returned later"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let x,y = 20, 250;",
+        "let s1 = await debug.screenshot(0);",
+        "",
+        "debug.touch(0,0, @start, x,y);",
+        "await Chrono.delay(1s);",
+        "debug.touch(0,0, @end, x,y);",
+        "",
+        "let s2 = await debug.screenshot(0);",
+        "s1,s2"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## not existing display",
+        "",
+        "Getting screenshot for a not existing display should reject the promise"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "debug.screenshot(99)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const kuty= 6;",
+        "1+2 + kuty "
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# connection test",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {TestSuite, EXPECT, elementsAreFrom, elementsAre, MockFunction, @registerSuite, @metadata,  Sample, AllTests } from \"xtest.xs\"",
+        "import {apply, applyMethod, objOf, constant, always, tap, pipe, compose, call, juxt, thunk, thunkify, curryN, curry, @curry, _} from \"core://functional\"",
+        "import {string, getFailObject, failure, id, keys, entries, typeof} from \"system://core\"",
+        "import * as F from \"core://functional\"",
+        "import {filter,seq,any} from \"system://itertools\"",
+        "",
+        "let arr = [1,2,3];",
+        "...filter(arr, v => v%2)",
+        "",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.log([10,20,30, 40] |> filter(^, v => v%3) |> ...^);",
+        "//console.log(new XsTable(\"h1\"))",
+        "//console.log(1,2,XsFormatSpec('right'), 4);",
+        "await Chrono.delay(200s, $cancellation);",
+        "console.log($cancellation.canceled ? \"cancelled\" : \"finished\");"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {wrapWithObjId} from \"system://serialization\"",
+        "createButton(label, func) { wrapWithObjId(\"vxb\", [\"button\", label, func])}",
+        "",
+        "clicked(arg) { ",
+        "    console.log(\"Nyomkodhatod amig akarod, \", arg);",
+        "}",
+        "",
+        "let button = createButton([\"Click\",\"me!\"], clicked(42,?) ); ",
+        "let libacomb = createButton(\"libacombot!\", clicked(\"nem kapsz semmit\",?) ); ",
+        "console.log(\"Nyomd meg a gombot\", button, \"kapsz egy\", libacomb );",
+        "await Chrono.delay(200s, $cancellation);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { default as ArgParser, NArgsType } from \"uie/util/args.xs\"",
+        "",
+        "let argParser = new ArgParser();",
+        "argParser.addArgument([\"--help\", \"-h\"], NArgsType.Zero);",
+        "argParser.addArgument([\"--connect\", \"-c\"], NArgsType.One);",
+        "let cmdLine = argParser.parse([",
+        "    \"program_name\", ",
+        "    \"--help\", ",
+        "    \"--connect=localhost:2012\"]);",
+        "",
+        "cmdLine.options;"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "majd ide fogok irni vmit",
+        "* lista",
+        "* lista"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "Iter.map(?)",
+        "//...Iter.map([1,2], v => 2*v)",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const macska = 10;",
+        "export runK() {",
+        "    console.log(\"kutya\");",
+        "    return \"kutya\";",
+        "};",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Try various outputs",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Execute to create symbol"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const s = Symbol(\"almafa\")"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Output various data",
+        "",
+        "## TODO",
+        "* line number mapping for debugger",
+        "* support source info custom object and source info in debug info",
+        "* kernels could share helperModule (and console hooks as well)",
+        "* object info if object is displayed multiple times (same id given to multiple output)",
+        "* disconnect when debugger is disconnected"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.log(s)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.log(1cm-2m, new Uiml.gcoor(42.1, 17.1), new Uiml.date());",
+        "//debug.pause(); // will stop but cannot show real source loc",
+        "1+{} // test error src"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "\"masik\""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.log([1cm, 1,2,3], {a:1});",
+        "//[1cm, 1,2,3], {a:1}"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.table([ {\"alma\":1, \"fa\":2} ]);",
+        "console.table({\"alma\":1, \"fa\":2});",
+        "",
+        "let weirdFishes = [",
+        "    {",
+        "        common_name: \"common fangtooth\",",
+        "        scientific_name: \"Anoplogaster cornuta\",",
+        "        family: \"Anoplogastridae\",",
+        "        wikipedia_link: \"https://en.wikipedia.org/wiki/Fangtooth\"",
+        "    },",
+        "    {",
+        "        common_name: \"vampire squid\",",
+        "        scientific_name: \"Vampyroteuthis infernalis\",",
+        "        family: \"Vampyroteuthidae\",",
+        "        wikipedia_link: \"https://en.wikipedia.org/wiki/Vampire_squid\"",
+        "    },",
+        "    {",
+        "        common_name: \"blobfish\",",
+        "        scientific_name: \"Psychrolutes marcidus\",",
+        "        family: \"Anoplogastridae\",",
+        "        wikipedia_link: \"https://en.wikipedia.org/wiki/Blobfish\"",
+        "    },",
+        "    {",
+        "        common_name: \"dumbo octopus\",",
+        "        scientific_name: \"Grimpoteuthis abyssicola\",",
+        "        family: \"Opisthoteuthidae\",",
+        "        wikipedia_link: \"https://en.wikipedia.org/wiki/Grimpoteuthis_abyssicola\"",
+        "    }",
+        "];",
+        "",
+        "console.table(weirdFishes);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "var d = new Uiml.odict({ a: 10, b: { c: { stuff: \"alma\"}}});",
+        "",
+        "console.log(\"Log1: \", d);",
+        "console.dir(\"dir1\", d);",
+        "d.b.c.stuff = Uiml.list.of(5, 6);",
+        "console.log(\"Log2: \", d);",
+        "console.dir(\"dir2\", d);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let x=0;",
+        "for(let i in [10,20,30,40,50]) {",
+        "    console.log(i);",
+        "    console.log(\"next\");",
+        "}",
+        "console.log(\"finished\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Notebook development",
+        "",
+        "## Toolbar",
+        "Jo lenne kitenni a toggle breakpoint margins a toolbarba. Esetleg az sem lenne baj, ha tudnank sajat commandot csinalni",
+        "",
+        "A toolbarra van extension point:",
+        "```json",
+        "    [{",
+        "        key: 'notebook/toolbar',",
+        "        id: MenuId.NotebookToolbar,",
+        "        description: localize('notebook.toolbar', \"The contributed notebook toolbar menu\"),",
+        "        proposed: true",
+        "    },",
+        "    {",
+        "        key: 'notebook/cell/title',",
+        "        id: MenuId.NotebookCellTitle,",
+        "        description: localize('notebook.cell.title', \"The contributed notebook cell title menu\"),",
+        "        proposed: true",
+        "    }]",
+        "```",
+        "",
+        "## cell status bar",
+        "",
+        "Cellak ala lehet status bar icon providert csinalni, lasd:",
+        "* NotebookCellStatusBarItem ",
+        "* NotebookCellStatusBarItemProvider ",
+        "",
+        "## egyebek:",
+        "ezek a menuk vannak",
+        "```ts",
+        "    static readonly NotebookToolbar = new MenuId('NotebookToolbar');",
+        "    static readonly NotebookCellTitle = new MenuId('NotebookCellTitle');",
+        "    static readonly NotebookCellInsert = new MenuId('NotebookCellInsert');",
+        "    static readonly NotebookCellBetween = new MenuId('NotebookCellBetween');",
+        "    static readonly NotebookCellListTop = new MenuId('NotebookCellTop');",
+        "    static readonly NotebookCellExecute = new MenuId('NotebookCellExecute');",
+        "    static readonly NotebookDiffCellInputTitle = new MenuId('NotebookDiffCellInputTitle');",
+        "    static readonly NotebookDiffCellMetadataTitle = new MenuId('NotebookDiffCellMetadataTitle');",
+        "    static readonly NotebookDiffCellOutputsTitle = new MenuId('NotebookDiffCellOutputsTitle');",
+        "    static readonly NotebookOutputToolbar = new MenuId('NotebookOutputToolbar');",
+        "```"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {getCallerLocAndId} from \"xtest/TestFramework.xs\"",
+        "var srcLoc = getCallerLocAndId(1);",
+        "const es = new Util.ErrorStream(\"almafa\\n\"); es.addSrcInfo(srcLoc); es.addSource(\"korte\");",
+        "//es;",
+        "es.errorInfo"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "/// [config] ",
+        "/// connection: localhost:3030",
+        "import {query} from \"system://dns-sd\"",
+        "let q = query(\"_nng-ipc-ws._tcp.local\", console.log(?));",
+        "await Chrono.delay(10s, $cancellation)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "/// [config] ",
+        "/// connection: localhost:3030",
+        "import {query} from \"system://dns-sd\"",
+        "import {stringify} from \"system://web.JSON\"",
+        "let q = query(\"_nng-ipc._tcp.local\", r => console.log(stringify(r)));",
+        "await Chrono.delay(10s, $cancellation)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {registerService} from \"system://dns-sd\"",
+        "import * as remoting from \"system://remoting\"",
+        "const p = remoting.ports();",
+        "const r = registerService({name:\"blue\", port:p, type:\"nng-ipc\"});",
+        "{}",
+        "r,p;"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Example webscoket http headers sent by ts websocket lib",
+        "```",
+        "GET /sockets/debug HTTP/1.1",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        "Sec-WebSocket-Version: 13",
+        "Sec-WebSocket-Key: jF07VSE6sj8NKm5Q86k32Q==",
+        "Host: localhost:1115",
+        "Sec-WebSocket-Protocol: debug.nng.com",
+        "```"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {addresses} from \"system://dns-sd\"",
+        "",
+        "return addresses();"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## failure"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {getFailObject, getOrElse, getOrDefault, failure} from \"system://core\"",
+        "gD(v) {",
+        "    getOrDefault(??v, 42);",
+        "}",
+        "gE(v) {",
+        "    getOrElse(??v, f => failure(\"failed with ${context}\", getFailObject(f).message));",
+        "}",
+        "{}",
+        "console.log(\"getOrDefault(x,42)\", gD(1),gD(undef), gD(failure(\"error\")));",
+        "console.log(\"getOrElse(x,failFunc)\", gE(1), gE(undef), ??gE(failure(\"error\")));",
+        "console.log(\"getOrElse(x,getMessage)\", getOrElse(failure(\"hibauzenet\"), f=>getFailObject(??f).message  ));"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "`toFailure(arg, msg)` converts the parameter to a failure like in Promise rejections:",
+        "* if arg is a failure it is returned as is",
+        "* otherwise creates a failure with `arg` as reason"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {toFailure, getFailObject} from \"system://core\"",
+        "{}",
+        "$log(toFailure(#{message: 42}, \"alma\"), undef, failure(#{message: \"42\"}));",
+        "$log(toFailure(\"alma\"), undef, failure(\"alma\"));",
+        "getFailObject(toFailure(\"alma\")).reason"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Iter.iterable",
+        "",
+        "Iter.iterable makes an iterable from a function returning na iterator. In fact function is only evaluted when iterator is asked for. Ideal for wrapping generators calls into repeatble iteration"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "*gener(from, to) { ",
+        "    for(;from<to; ++from) ",
+        "        yield from;",
+        "}",
+        "const range0To10 = Iter.iterable(gener, 0,10);",
+        "{}",
+        "...range0To10"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Iterable supports currying. Calling the iterable will capture argument that is to be passed upon iterator query"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const range = Iter.iterable(gener);",
+        "const range0To5 = range(0,5);",
+        "{}",
+        "...range0To5"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Iterable also supports chaining itertools methods. When a method call is made with an iterttools method it creates a new pipelinecalls "
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const filtered = Iter.iterable(Iter.filter(?));",
+        "const seq = [1,2,3,4,5,10];",
+        "const hs = filtered(seq, v => v%2==0).map(v=>v/2);",
+        "{}",
+        "...hs"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "The piplelien can be iterated multiple times. Each iteration makes a now iteration"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "...hs"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## observable"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### observeValue and onChange",
+        "Similar to the old `observe` function but adheres to observe protocol. Namely, subscription is not passed as a parameter and lifetime is always controlled by the returning subscription. Also accepts next/error/complete listeners and by thus can be chained by other observer tools. Of course simple function are also accepts.",
+        "",
+        "observeValue passes each value change while onChange doesn't send the initial value (by default)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {observeValue, onChange, bundleChanges} from \"system://core.observe\"",
+        "",
+        "class LogSubs {",
+        "    msg = \"\"",
+        "    next(...v) { console.log(this.msg, \": next:\", ??...v) }",
+        "    error(e) { console.log(this.msg, \": error:\", ??e)}",
+        "    complete() { console.log(this.msg, \": done\")}",
+        "}",
+        "const rec = #{ prop: \"alma\"};",
+        "odict od { prop= \"first\"; bool= true}",
+        "{}",
+        "console.log(\"# onChange with unobservable should stop with error\");",
+        "onChange(_=>rec.prop).subscribe(LogSubs{ msg=\"onChange/record\"});",
+        "onChange(_=>??x.y).subscribe(LogSubs {msg=\"onChange/error\"});",
+        "console.log(\"# observeValue with unobservable should deliver value and should complete\");",
+        "observeValue(_=>rec.prop).subscribe(LogSubs{msg=\"observe/rec\"});",
+        "observeValue(_=>??x.y).subscribe(LogSubs{msg=\"observe/error\"});",
+        "console.log(\"# onChange only reports changes (when value is also changed). observe reports all values\");",
+        "let s1 = observeValue(_ => od.prop).subscribe(LogSubs{msg=\"observe\"});",
+        "let s2 = onChange(_ => od.prop).subscribe(LogSubs{msg=\"onChange\"});",
+        "let s3 = onChange(_ => od.prop && od.bool).subscribe(LogSubs{msg=\"onChange of expression\"});",
+        "let s4 = onChange(_ => {od.prop, od.bool}).subscribe(LogSubs{msg=\"multi value onChange\"});",
+        "console.log(\"## Changing `prop`, should trigger `observe` and `onChange`\");",
+        "od.prop = \"second\";",
+        "console.log(\"## Changing `bool`, should trigger `onChange of expression`\");",
+        "od.bool = false;",
+        "console.log(\"## Dispose observeValue\");",
+        "s1.cancel(); ",
+        "console.log(\"## unchanged value should be ignored even in case of multivalue\");",
+        "bundleChanges( _ => { invert od.bool; invert od.bool; });",
+        "console.log(\"## Dispose all\");",
+        "s2.cancel(); s3.cancel(); s4.cancel();",
+        "od.prop = \"akarmi\"; od.bool=true;",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### fromAsyncGen, fromGen, take(n)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {fromAsyncGen, do as _do, take, lastValueFrom } from \"core://observe\"",
+        "{}",
+        "let s = fromAsyncGen(async function *() { yield 1; yield Promise.resolve(2); yield  3;} ) |> _do(v => console.log(\"value:\",v), ^) |> lastValueFrom(^);",
+        "await s;",
+        "//await fromAsyncGen(async function *() { yield 1; yield Promise.resolve(2); yield  3;} ) |> take(2, ^) |> _do(v => console.log(\"value:\",v), ^) |> lastValueFrom(^);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {do as _do, take, fromIter, fromGen, lastValueFrom } from \"core://observe\"",
+        "{}",
+        "let v1 = fromGen(function *() { yield 1; yield 20; yield  30;} ) |> take(2,^) |> _do(v => console.log(\"gen value:\",v), ^) |> lastValueFrom(^);",
+        "console.log(await v1);",
+        "let v2 = fromIter(function *() { yield 1; yield 20; yield  30;}() ) |> _do(v => console.log(\"iter value:\",v), ^) |> lastValueFrom(^);",
+        "console.log(await v2);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "class LogSubs {",
+        "    msg = \"\"",
+        "    next(...v) { console.log(this.msg, \": next:\", ??...v) }",
+        "    error(e) { console.log(this.msg, \": error:\", ??e)}",
+        "    complete() { console.log(this.msg, \": done\")}",
+        "}",
+        "import {do as _do, take, fromAsyncGen, fromGen, lastValueFrom,share } from \"core://observe\"",
+        "{}",
+        "let s = fromAsyncGen(async function *() { yield Promise.resolve(1); yield Promise.resolve(2); yield  3;} ) |> _do(v => console.log(\"value:\",v), ^) |> share(^);",
+        "let v2 = take(2, s) |> _do(v => console.log(\"v2:\",v), ^) |> lastValueFrom(^);",
+        "let v1 = take(1, s) |> _do(v => console.log(\"v1:\",v), ^)  |> lastValueFrom(^);",
+        "let v3 = s |> _do(v => console.log(\"v3:\",v), ^) |> lastValueFrom(^);",
+        "await.all([v1,v2,v3]);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {ArrayBuffer, DataView, DataReader, Uint8Array, DataWriter} from \"system://core.types\"",
+        "import {and, shr,shl} from \"system://math\"",
+        "import {typeof} from \"system://core\"",
+        "",
+        "odict conn { reqId = 0};",
+        "put32(b, off, data) {",
+        "    for(let i =0; i<4; ++i) {",
+        "        b[off++] = data;",
+        "        data = shr(data,8);",
+        "    }",
+        "    off;",
+        "}",
+        "send(id, ...args) {",
+        "    let b = DataWriter(256);",
+        "    b.u32(0).u16(id).u16(++conn.reqId);",
+        "    let off = 8;",
+        "    for(const v in args) {",
+        "        typeof(v) == @string ? b.string(v) : b.u32(v)",
+        "    }",
+        "    b.u32At(0, b.pos /*=len*/); // TODO: u32At is ugly, myabe could be somethog b.writeAt(0, @u32, len )",
+        "    return DataReader.view(b, 0, b.pos)",
+        "}",
+        "{}",
+        "let r = send(10, \"alma\", 42, \"korte\", 23);",
+        "//console.log(r.vli(), r.vli(), r.vli(), r.vli());",
+        "r.order = @be;",
+        "console.log(r.u32(@le)); // override @be with @le",
+        "r.order = @le;",
+        "console.log(/*r.u32(@be), */ r.u16(), r.u16(), r.string(2), r.string(), r.u32(), r.string(), r.u32() );",
+        "r.pos;",
+        "",
+        "let w = DataWriter();",
+        "w.u32(2999);",
+        "console.log(w.pos, w[0], w[1], w[2],w[3], w.u32At(0))"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {ArrayBuffer, DataView, DataReader, Uint8Array, DataWriter} from \"system://core.types\"",
+        "import {and, shr,shl} from \"system://math\"",
+        "import {typeof} from \"system://core\"",
+        "",
+        "{}",
+        "let w = DataWriter();",
+        "w.vli(42).vli(1048).vlu(123423).vli(12312);",
+        "let r = DataReader.view(w, 0, w.pos);",
+        "console.log(r.vli(), r.vli(), r.vlu(), r.vli());",
+        "console.log(`${w.pos} == ${r.pos}`);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {failure} from \"system://core\"",
+        "async* it() {",
+        "    yield 1;",
+        "    yield 2;",
+        "    return true; //failure(\"alma\");;",
+        "}",
+        "let res = true;",
+        "async function *wrapIt(it) {",
+        "    res=?? (yield* it);",
+        "}",
+        "",
+        "for await(const x in wrapIt(it())) {",
+        "    $log(??x)",
+        "}",
+        "$log(\"The result is: \", ?? res);"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## JSON stringify improvements"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {stringify} from \"system://web.JSON\"",
+        "{}",
+        "stringify(object {alma=5; korte=42; method() {42}})"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "stringify(Iter.range(0,4).map(i => (`key${i}`, `value${i}`)))"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "stringify(#{user:\"alma\", password: \"titkos42\"}, (k,v) => { k == @password ? \"*****\" : v})"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "stringify(#{user:\"alma\", password: \"titkos42\"}, (k,v) => { k == @password ? (:) : v})"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "stringify(#{alma:42, korte:56, banan:48},[@alma,@banan])"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "const o = { x: 5, y: 6, obj: { backRef:undef}};",
+        "o.obj.backRef=o;",
+        "$log(stringify(o));",
+        "o.obj.backRef=undef"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# WeakMap",
+        "",
+        "## emplace"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {WeakMap} from \"system://core.types\"",
+        "WeakMap w;",
+        "{}",
+        "$log(w.emplace({x:5}, k=>42.0));",
+        "$log(w.size);",
+        "const o = {x:11};",
+        "$log(w.emplace(o, k=>k.x+31));",
+        "$log(w?.[o]);",
+        "$log(w?.[{x:12}]);",
+        "$log(w.emplace(o, k=>k.x+11, (v,k)=>v+k.x));",
+        "$log(w?.[o]);",
+        "$log(w.emplace(o, k=>k.x+11, console.log(\"Called\",?)));",
+        "$log(o,w[o]);",
+        "$log(w.emplace(o, undef, ()=>Symbol.NoProperty));",
+        "$log(w[o]??\"removed as it should have been\");",
+        "$log(w.emplace(o, ()=>Symbol.NoProperty));",
+        "$log(w[o]??\"still has not inserted\");",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## upsert compatibility"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{",
+        "    let p = {y:4};",
+        "    $log(w.upsert(p, undef, k=>k.y*20.5));",
+        "    $log(w.upsert(p, v=>v*2));",
+        "    $log(w.get(p));",
+        "}",
+        "$log(w.size)",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments} from \"uie/bookUi.xs\"",
+        "<component panel>",
+        "    <div P> // CD",
+        "  \t    <includeChildren />",
+        "    </div>",
+        "</component>",
+        "export <template t_Marker >",
+        "    <includeChildren />",
+        "</template>",
+        "export <template t_SelectionBase class=(@markerBounds, @flex_v ) extends=t_Marker>",
+        "    <group class=(@flex_v, @b_center, @moreInfo)> // I, doesn't count because child of t_Marker",
+        "        <panel pointInfoBubble class=flex_v, shadow_md, p_0, mb_md, panel_secondary > // -",
+        "            <group> // D(1) N(1),",
+        "               <group>",
+        "                    <includeChildren filter=\".inside_panel_bottom\" />",
+        "               </group>",
+        "            </group>",
+        "            <includeChildren filter=\".x\"/> // should much <div class=x/> e.g. because of this #pointInfoBubble > * { flex:1}",
+        "        </panel>",
+        "    </group>",
+        "</template>",
+        "export <template t_EmbeddedSelectionMarker  extends=t_SelectionBase>",
+        "    <button class=shadow_md, ml_sm, b_center, btn_xxl, inside_panel_bottom, tempEV>  // C, I, N(1), D(0)",
+        "        <sprite class=icon_md, img_waypoint_add, fore /> // D(1) - N(2)",
+        "    </button>",
+        "    <div class=x/> //D(1), I",
+        "</template>",
+        "// I is inherited include children,  CD, from component def,   N(n) component nesting D(n) - n",
+        "/* result: ",
+        "   <t><group><panel><div P>",
+        "       <group<group><button>",
+        "            <sprite/>",
+        "            <text/>",
+        "            <sprite class=icon_md/>",
+        "        </button></group></group>",
+        "        <div class=x/>",
+        "    </div></panel></group></t>",
+        "*/",
+        "{}",
+        "showFragments( t_EmbeddedSelectionMarker)",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "<component cica>",
+        "</component>",
+        "<template t_kutya component=cica>",
+        "</template>",
+        "{}",
+        "showFragments(t_kutya)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {showFragments} from \"uie/bookUi.xs\"",
+        "<component myComp>",
+        "  <ddiv d><includeChildren></ddiv>",
+        "</component>",
+        "<component ddiv>",
+        "  <sprite><includeChildren></sprite>",
+        "</component>",
+        "",
+        "<myComp inst>  // <myComp inst>           <myComp>",
+        "  <div alma/>  //   <ddiv d>                <ddiv d>",
+        "</myComp>      //     <div alma>               <sprite>",
+        "               //   </ddiv>                      <div alma>",
+        "               // </myComp>                    </sprite>",
+        "               //                           </ddiv>",
+        "               //                         </myComp>",
+        "{}",
+        "showFragments(inst);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "<myComp inst>    // Componet",
+        "  <ddiv d>       // from component myComp",
+        "    <sprite>     // from component ddiv, parent is ddiv",
+        "      <div alma> // from myComp, but not from a component, myComp#inst is \"parent\"",
+        "    </sprite>",
+        "  </ddiv>",
+        "</myComp>"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {parse} from \"system://web.JSON\"",
+        "{}",
+        "parse('true:1, false: 111', @hjson)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {parse} from \"system://web.JSON\"",
+        "{}",
+        "const r = parse(\"{",
+        "    alma : 42",
+        "    prop : [ 1, 2]",
+        "    mu : '''",
+        "    nincs \\r",
+        "    koret",
+        "   ujsor",
+        "    '''",
+        "}\", @hjson);",
+        "console.log(r.mu);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {void} from \"core://functional\"",
+        "const print = +> (: void(console.stdout.print(^)), console.stdout.flush() );",
+        "{}",
+        "//print(\"\\u001b[?25l\"); // hide cursor",
+        "//print(\"\\u001b[?25h\"); // show cursor",
+        "print(\"\\n--->\");",
+        "for(let i =0;i<10;++i) {",
+        "    await Chrono.delay(200ms);",
+        "    print(\"\\x1b[D->\");",
+        "}"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "list l [1,2, do { ()=>{ return 1; }; 10, 20} ];",
+        "l"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {pipe} from \"core://functional\"",
+        "prop(name, obj) {",
+        "    obj[name]",
+        "}",
+        "props(fields, obj) {",
+        "    Iter.map(fields, prop(?, obj));",
+        "}",
+        "pick(fields, obj) {",
+        "    Iter.zip(fields, props(fields, obj)).toRecord();",
+        "} ",
+        "hasAnyExt(extensions) { // return a func checking if name has any extension",
+        "    name => Iter.any(extensions, name.endsWith(?))",
+        "}",
+        "{}",
+        "const files = [#{name:\"alma.gif\"}];",
+        "$log(...",
+        "   Iter.filter(files, pipe(prop(@name,?), hasAnyExt([\".jpeg\",\".gif\",\".bmp\"]))));",
+        "pick([@a, @c], #{a:10, b:20, c:42})"
+      ]
+    }
+  ]
+}

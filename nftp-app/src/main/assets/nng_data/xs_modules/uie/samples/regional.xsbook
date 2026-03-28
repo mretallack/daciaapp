@@ -1,0 +1,149 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Interface for getting the list of languages (previously provided by model sys interface)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as languages from \"system://regional.languages\"",
+        "",
+        "languages.langZips"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as languages from \"system://regional.languages\"",
+        "languages.currentLang()"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Set lang to hungarian"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as languages from \"system://regional.languages\"",
+        "",
+        "languages.setLang(1038) // hungarian lcid"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Set lang to english"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as languages from \"system://regional.languages\"",
+        "",
+        "languages.setLang(9) // some english"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Locale interface"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "iso to igo country code"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as locale from \"system://regional.locale\"",
+        "locale.isoToIgoCountry(\"HU\"), locale.isoToIgoCountry(\"DEU\")"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "igo country to iso"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as locale from \"system://regional.locale\"",
+        "",
+        "locale.igoToIsoCountry(\"GER\")"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "lang info"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as locale from \"system://regional.locale\"",
+        "",
+        "locale.langInfo(\"en-GB\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as locale from \"system://regional.locale\"",
+        "locale.langInfo(\"en-US\")"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "lcid info"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as locale from \"system://regional.locale\"",
+        "locale.lcidInfo(9); // english lang",
+        "// locale.lcidInfo(2057) // en-GB"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as locale from \"system://regional.locale\"",
+        "import {i18n, translate} from \"system://i18n\"",
+        "{}",
+        "locale.isoToIgoCountry(\"DEU\"), translate(\"_\" + locale.isoToIgoCountry(\"DEU\"))",
+        ""
+      ]
+    }
+  ]
+}

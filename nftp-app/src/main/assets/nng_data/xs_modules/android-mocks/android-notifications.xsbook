@@ -1,0 +1,270 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Using notifications on Android",
+        "",
+        "The `android://notifications` module provides access to the notification system on android.   ",
+        "For a complete overview see the [official notification guide](https://developer.android.com/guide/topics/ui/notifiers/notifications?hl=en), all examples are provided in Kotlin or Java, but the concepts are the same."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as notifications from \"android://notifications\"",
+        "",
+        "notifications"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Creating a notifications channel",
+        "Before you can deliver the notification on Android 8.0 and higher, you must register your app's notification channel with the system.   ",
+        "Starting in Android 8.0 (API level 26), all notifications must be assigned to a channel. For each channel, you can set the visual and auditory behavior that is applied to all notifications in that channel. Then, users can change these settings and decide which notification channels from your app should be intrusive or visible at all.",
+        "",
+        "To create a notification channel, use the `createNotificationChannel(id, name, options)` function:",
+        "* id is the unique channel ID, ",
+        "* name is a user-visible name, ",
+        "* in options  you can set:",
+        "  * an importance level, with the `importance` field. The default value is Importance.DEFAULT ",
+        "  * Optionally, specify the `description` that the user sees in the system settings"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "notifications.createNotificationChannel(\"naviChannel\", \"Navigation\", {",
+        "    description: \"Next directions and navigation progress\"",
+        "})"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Show a notification",
+        "",
+        "The `notify(channelId, details)` method can be used to fire a new notification.   ",
+        "A notification has a lot of options (in the details argument) but the following properties are required:",
+        "- `smallIcon` - required by the system. Use an android resource identifier name, found in your package, where the resource name will point to: `R.drawable.<name>`",
+        "- `title` - notification title",
+        "- `text` - body text",
+        "",
+        "notify will return a Notification object, which you can use later to update or cancel it."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const helloNoti = notifications.notify(\"naviChannel\", {",
+        "    title: \"Hello\",",
+        "    text: \"My first notification\",",
+        "    smallIcon: \"ic_navigation\",",
+        "});",
+        "",
+        "helloNoti"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Notification with large icon"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const directionsNoti = notifications.notify(\"naviChannel\", {",
+        "    title: \"Turn right\",",
+        "    text: \"In 100 meters\",",
+        "    smallIcon: \"ic_navigation\",",
+        "    largeIcon: \"ic_right\",",
+        "    ",
+        "});",
+        "",
+        "directionsNoti"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Update a created notification"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "helloNoti.update({",
+        "    title: \"Progress\", ",
+        "    // text: \"Next stop: Auchan\",",
+        "    // progress: 40,",
+        "    // maxProgress: 100,",
+        "    // timeout: 2000, ",
+        "})"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Update directions noti"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "directionsNoti.update({",
+        "    text: \"In 30 meters\",",
+        "    largeIcon: \"ic_right\",",
+        "    // progress: 20,",
+        "    // maxProgress: 50,",
+        "})"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Associating actions with notifications",
+        "",
+        "You can specify what to happen, when a notification is tapped, or you can add other actions (as buttons) to the notification.",
+        "",
+        "On Android notifications respond to user actions by dispatching an intent (usually to open an activity in your app that corresponds to the notification).",
+        "The notification module makes it possible to encode an `actionId` (a unique name for your action) and associated arguments in the intent.   ",
+        "Note that notifications may outlive your activities (or the entire app), so action arguments are limited to fully serializable objects (like strings, numbers, dictionaries, tuples etc.).",
+        "Also to ensure, that the intended action handlers will be invoked, the module queues the actions received at startup, until a corresponding handler is registered.",
+        "",
+        "You can register handlers for the actionId's linked with the notifications with the `registerHandler(actionId, action)` function. The action callable will be called each time an associated action is selected by the user, and will receive all the arguments specified in the notification"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { yugoConnector } from \"~/src/embedded/yugo_connector.xs\"",
+        "",
+        "// registers some dummy action handlers, which log the corresponding actions",
+        "notifications.registerActionHandler(\"nng.uie.open\", (what, count) => {",
+        "    console.log(`'nng.uie.open' what=${what}, count=${count} `)",
+        "});",
+        "",
+        "notifications.registerActionHandler(\"nng.navi.replan\", (arg) => {",
+        "    console.log(`'nng.navi.replan' ${arg}`)",
+        "});",
+        "",
+        "notifications.registerActionHandler(\"nng.uie.traffic\", (arg) => {",
+        "    console.log(`Show traffic incident ${arg.incidentId}`);",
+        "    yugoConnector.centerMap(arg.location, 15000.0)    ",
+        "});"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### Add tapAction to a notification",
+        "The following example specifies the `tapAction` option, describing what to happen when the user taps the notification:",
+        "- it will call the  `nng.uie.open` action with `(\"first arg\", 505)`",
+        "- `autoCancel` means that the notification will be canceled automatically when the user taps it "
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const directionsNoti = notifications.notify(\"naviChannel\", {",
+        "    title: \"Turn left\",",
+        "    text: \"In 300 meters\",",
+        "    smallIcon: \"ic_navigation\",",
+        "    largeIcon: \"ic_left\",",
+        "    tapAction: (\"nng.uie.open\", \"first arg\", 600),",
+        "    autoCancel: true,",
+        "});",
+        "",
+        "directionsNoti"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### Adding multiple actions to a notification"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const trafficNoti = notifications.notify(\"naviChannel\", {",
+        "    title: \"Major delay\",",
+        "    text: \"Accident on M7, near Martonvasar\",",
+        "    smallIcon: \"ic_navigation\",",
+        "    tapAction: (\"nng.uie.traffic\", { incidentId: 5000, location: {latitude: 47.319805, longitude: 18.759143 } }),",
+        "    actions: (",
+        "        { title:\"Replan route\", action:\"nng.navi.replan\", args:[{reason: \"traffic-delay\"}], autoCancel: true, showActivity: true },",
+        "        { title:\"Dismiss\", action:\"nng.dismiss\", autoCancel:true }",
+        "    )",
+        "});",
+        "",
+        "trafficNoti"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Using the android notifications module while developing",
+        "",
+        "System wide notification functionalities differ on each platform (Android, iOS, Windows10).",
+        "There are parts which are very similar, but there are lots of differences as well, and not ",
+        "just in appearance. ",
+        "",
+        "For example on iOS you can't update (or replace) already shown notifications. There isn't any ",
+        "default tap action associated with the notification.    ",
+        "On Windows there's a richer visual interface for creating notifications.  ",
+        "",
+        "On iOS and Windows when a notification action is selected, the app will be opened (if not ",
+        "already running) and an event will be delivered with the selected action and it's arguments.",
+        "Details differ, but the concept is the same.    ",
+        "On Android you can link Intents with notification actions, which can reactivate the main ",
+        "activity if needed, but also can launch new activities, or services, or broadcast some ",
+        "message. "
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Using mocked notification in PC-emu",
+        "",
+        "On Windows, while developing, a mocked implementation of the module will be activated, which",
+        "displays notifications in a separate window.",
+        "",
+        "Another option is to defer from loading the android specific handler code at all(especially when ",
+        "we target other platforms as well).",
+        "An example would be to subscribe on maneuver changes, and show notifications, while the ",
+        "app is running in background. This maneuver notifier code would be probably different or ",
+        "missing on other platforms.  ",
+        "    ",
+        "Using sysconfig or command line arguments to enable such components is preferred. ",
+        "uie_mob implements such a functionality in _Navi Notifications demo_, where navigation events ",
+        "either trigger notifications or not (the `naviNotificationsAndroid.xs` module decides on this ",
+        "dynamically) "
+      ]
+    }
+  ]
+}

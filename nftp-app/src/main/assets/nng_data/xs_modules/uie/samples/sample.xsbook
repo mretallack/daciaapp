@@ -1,0 +1,768 @@
+{
+  "cells": [
+    {
+      "kind": "code",
+      "language": "hjson-cell",
+      "source": [
+        "{",
+        "   # connect to given host or use 'active' to connect to the active debugged process",
+        "   connection: active ",
+        "   envs : {",
+        "       default: {sandbox:false},",
+        "       uie : {connection: \"localhost:8081\", sandbox:true},",
+        "       xs : {connection: \"localhost:8080\"},",
+        "   }",
+        "}"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Sample xsbook",
+        "",
+        "Ez az xsbook egy-ket uj fejlesztest hivatott prezentalni.",
+        "",
+        "## Object info",
+        "",
+        "Data es objectekeet reszletei kattintasra kibonthatoak, forrashoz lehet ugrani.",
+        "",
+        "Definialjunk egy kis adatot"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "/// env:uie",
+        "odict data {",
+        "    arr = [ 1,2,3,10];",
+        "    value = 1,2,3;",
+        "    app = [odict {",
+        "            name=\"cokcpit\";",
+        "            path=\"c:/work/cockpit\"",
+        "        },",
+        "        odict {",
+        "            name=\"uie\";",
+        "            path=\"c:/work/nsdk/..\"",
+        "    }];",
+        "    emb = class {",
+        "        static name = \"embedded class\";",
+        "        prop = 42;",
+        "    }",
+        "};"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Vizsgaljuk meg az adatot, erre tobb lehetoseg is van",
+        "* return value-t ki lehet bontani",
+        "* console.log debugerben megszokott modon kibonthato adatokat eredmenyez",
+        "* console.dir az adatrol snapshotot keszit, mindig a dir hivasakor "
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "/// env:uie",
+        "console.log(\"apps\", data);",
+        "data.emb"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## console.dir",
+        "",
+        "Console.dir snapshotok keszit, azaz lemasolja az adatot es azt az allapotot mutatja amikor kiadtuk a `dir` hivast.",
+        "",
+        "Mig `console.log` allapota atto fugg mikor kertuk le"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.dir(\"dir\", data);",
+        "console.log(\"log\", data);",
+        "data.extra = 42;",
+        "console.dir(\"dir extra adattal:\", data)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.dir`Databan az arr 2 erteke: ${data.arr}`;",
+        "console.log`Databan az arr 2 erteke: ${data.arr}`;",
+        "data.arr.push(1);",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## screenshot keres"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "/// env:uie",
+        "let x,y = 20, 250;",
+        "let s1 = await debug.screenshot(0);",
+        "",
+        "debug.touch(0,0, @start, x,y);",
+        "await Chrono.delay(1s);",
+        "debug.touch(0,0, @end, x,y);",
+        "",
+        "let s2 = await debug.screenshot(0);",
+        "console.log(s1,s2)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## breakpointok",
+        "",
+        "Lehet breakpointokat tenni book cellakba is.",
+        "Uj feature hogy a conditional breakpointok mellett megjelentek a tracepointok es a hitcountok is"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let x=0;",
+        "for(let i in [10,20,30,40,50]) {",
+        "    const v = i /10;",
+        "    i;",
+        "    console.log(\"next\");",
+        "}",
+        "console.log(\"finished\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Applikaciok",
+        "",
+        "Egy notebool akar egy mini alkalmazast is implementalhat. Akar fejlesztesi, akar inspectalas celjabol.",
+        "Ehhez nem art ha valahogy vissza tudunk szolni engine-nek",
+        "",
+        "Egy kezdemenyezes, hogy olyan gombokat lehessen kirakni ami enginebe hiv vissza",
+        "",
+        "A kovetkezo kis kod ket gombot fog kirakni es addig 200secig fut vagy amig le nem allitjuk. Ez mutatja a cancellation token hasznalatat is (lasd `$cancellation`). Chrono.delay ki lett egeszitve cancellation token kezelessel."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {taggedTupleValue} from \"system://serialization\"",
+        "const xsbookItem = taggedTupleValue(\"vxb\", ?);",
+        "xsbookButton(label, func) { xsbookItem(\"button\", label, func)}",
+        "xsbookColor(color, label) { xsbookItem(\"color\", color, label || (:) )}",
+        "",
+        "clicked(arg) { ",
+        "    console.log(\"Nyomkodhatod amig akarod, \", arg);",
+        "}",
+        "",
+        "let button = xsbookButton(\"Click me!\", clicked(42,?) ); ",
+        "let libacomb = xsbookButton(\"libacombot!\", clicked(\"nem kapsz semmit\",?) ); ",
+        "console.log(\"Nyomd meg a gombot\", button, \"kapsz egy\", libacomb, xsbookColor(#1AEA53, \"(szinut)\" ));",
+        "await Chrono.delay(200s, $cancellation);",
+        "console.log`cancelled ${$cancellation.canceled}`"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Error info"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as F from \"core://functional\"",
+        "",
+        "F.compress2(5,6)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { isStringTemplateObject} from \"system://core\"",
+        "",
+        "f(str, ...args) {",
+        "    console.log(\"is string template\", isStringTemplateObject(str));",
+        "    console.log(str,...args);",
+        "}",
+        "",
+        "{}",
+        "f(\"lama\");",
+        "f`lama ${1} es ${2}`"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {getIterator, isIterDone} from \"system://core\"",
+        "",
+        "*wrap(g) {",
+        "    g = getIterator(g);",
+        "",
+        "    let last = g.next();",
+        "    if (isIterDone(last))",
+        "        return l;",
+        "    for(let n in g) {",
+        "        last.next = n;",
+        "        yield last;",
+        "        last = n;",
+        "    }",
+        "    yield last;",
+        "}",
+        "",
+        "{}",
+        "for(const x in wrap([{a:10}, {b:20}, {c:30}]))",
+        "    console.log(x);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {runAsyncGenerator, hasProp} from \"system://core\"",
+        "*sync() {",
+        "    console.log(1);   yield 2;",
+        "    console.log(2);   yield 3;",
+        "    console.log(3);   yield 3;",
+        "    console.log(4);",
+        "    return 42;",
+        "}",
+        "*notsync() {",
+        "    console.log(1);    yield 2;",
+        "    console.log(2);    yield Promise.resolve(1);",
+        "    console.log(3);    yield 3;",
+        "    console.log(4);    yield 3;",
+        "    console.log(5);",
+        "    return 42;",
+        "}",
+        "",
+        "let res = runAsyncGenerator(notsync()); // try sync",
+        "if (res && hasProp(res, @then)) {",
+        "    console.log(\"awaiting async...\");",
+        "    res= await res;",
+        "}",
+        "console.log(\"result\", res);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {registerService} from \"system://dns-sd\"",
+        "let srvReg = registerService({name: \"cockpit__\", port: 1115, type: \"nng-ipc-ws\", txt: {alma: 42, korte: \"str\"}});",
+        "await Chrono.delay(45s);",
+        "console.log(\"Finished\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Print ports opened for remoting (TCP/IP)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as remoting from \"system://remoting\"",
+        "remoting.ports()"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "console.log(true,false, 0, 1);",
+        "await Chrono.delay(10s, $cancellation);",
+        "true, false,1"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "console.log(\"alma goes to every active cell\");",
+        "$log(\"cell only\", true,false, 0, 1);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {encode} from \"system://QrCode\"",
+        "{}",
+        "debug.encodeImg(encode(\"alma\"), \"png\")",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "",
+        "import {fr_Xhtml_test} from \"~/visual_test/xhtml/test_xhtml.ui\"",
+        "",
+        "const win = screen.createWindow( 800, 600, 240 );",
+        "style st {",
+        "\t.xhtml_test{",
+        "\t\tfont:\"default\";",
+        "\t\tfontSize: 22;",
+        "\t\tcolor: #ffffff;",
+        "\t\tz:1;",
+        "\t}",
+        "}",
+        "{}",
+        "win.styles.add(st);",
+        "win.showFragment(fr_Xhtml_test)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "win.getElementById(\"ui_Xhtml_test\").text=\"<p><u><img bmp=xhtml_test.bmp float='left'/>some </u><u>text longer</u> line mennyit kell meg itt gepelni, meg egy picit hogy torni",
+        "<br/>some text<br/>ak <br/>kk<br/>kaaaa<br/>kk<br/>kk<br/>kk<br/>kk</p>\";",
+        "debug.screenshot(win.displayId);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let xhtml = win.getElementById(\"ui_Xhtml_test\");",
+        "xhtml.text=\"<p><span float=right font-size=40>T</span>some text<br/>some text</p>\""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let xhtml = win.getElementById(\"ui_Xhtml_test\");",
+        "xhtml.color=#66f"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "win.getElementById(\"ui_Xhtml_test\").text=\"<p>لَا لا لِله للَه<span bold=1 color=red>Abلَا لا لِله للَه</span></p>\""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {fr_VsHBoxTest,stylesVsbox} from \"~/visual_test/box/test_vs_box.ui\"",
+        "import {readFileSync} from \"system://fs\"",
+        "const icon = readFileSync(\"nngfile://xs/uie/samples/appicon.png\");",
+        "const win2 = screen.createWindow( 900, 300, 240, {icon: new Uiml.image(icon)} );",
+        "initText(w, txt, size=20) {",
+        "        w.fontSize = size;",
+        "        w.text=txt;",
+        "        w.boxAlign=@baseline; w.align=@left; w.valign=@center; w.paddingLeft=0; w.paddingRight=0;",
+        "        w;",
+        "}"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "win2.styles.add(stylesVsbox);",
+        "win2.showFragment(fr_VsHBoxTest);",
+        " ",
+        "initText(win2.getElementById(\"text1\"), \"لَا لا لِله للَه\");",
+        "initText(win2.getElementById(\"text2\"), \"Abلَا لا لِله للَه\").color=#ff33",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "<fragment frx>",
+        "<div layout=\"text\">",
+        "  <text text=\"alma\"><button/>",
+        "  <text text=\"http://alma\" underline=true onClick=\"goto(uri)\">",
+        "</div>",
+        "<text text=\"alma\">",
+        "  <text text=\"http://alma\" inline=true underline=true onClick=\"goto(uri)\">",
+        "</text>",
+        "",
+        "</fragment>"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### Set windows/X11 window Icon"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {getImage} from \"system://ui.resource\"",
+        "const appIcon = getImage(\"nngfile://xs/uie/samples/appicon.png\", #{premult:true});",
+        "{}",
+        "screen.root.icon = appIcon;",
+        "screen.root.title = \"Üdv a demón!\";",
+        "debug.encodeImg(appIcon, \"png\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {getImageSize} from \"system://ui.resource\"",
+        "{}",
+        "getImageSize(\"nngfile://xs/uie/samples/appicon.png\");",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Set to qrcode"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {encode} from \"system://QrCode\"",
+        "{}",
+        "let img = encode(\"alma\", #{border:5, bgColor:#f000, color:#f0ff, premult:false});",
+        "screen.root.icon=img;",
+        "screen.root.title = \"qrcode of alma\";",
+        "debug.encodeImg(img, \"png\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {readFileSync} from \"system://fs\"",
+        "import {image} from \"system://ui.types\"",
+        "{}",
+        "let png = readFileSync(\"nngfile://xs/uie/samples/appicon.png\");",
+        "let img = new image(png);",
+        "screen.root.icon = img;",
+        "//png",
+        "debug.encodeImg(img)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "let w = screen.getWindowByDisplayId(1);",
+        "w.setFullscreen();",
+        "await Chrono.delay(20s);",
+        "w.setFullscreen(false);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "let w = screen.root;",
+        "w.setProgressState(@normal);",
+        "w.setProgressValue(10, 100);",
+        "await Chrono.delay(150ms);",
+        "w.setProgressValue(20, 100);",
+        "w.setProgressState(@red);",
+        "await Chrono.delay(150ms);",
+        "w.setProgressState(@green);",
+        "w.setProgressValue(30, 100);",
+        "await Chrono.delay(1s);",
+        "w.setProgressState(undef);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "screen.root.hideMouse(true)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {getImage} from \"system://ui.resource\"",
+        "import {writeFileSync} from \"system://fs\"",
+        "{}",
+        "const img = getImage({url:\"radial_grad_user_space.svg\", w:800, h:400});",
+        "const buf = debug.encodeImg(img, \"png\");",
+        "$log(buf);",
+        "writeFileSync(\"c:/work/akarmi2.png\", buf)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### screenshot img/trace",
+        "",
+        "Screenshot can retrieve an image object without encoding it in same image foramt"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let b = debug.traceBlock();",
+        "let x,y = 20, 250;",
+        "let s1 = await debug.screenshot(0, @image);",
+        "",
+        "",
+        "debug.touch(0,0, @start, x,y);",
+        "await Chrono.delay(200ms);",
+        "debug.touch(0,0, @end, x,y);",
+        "",
+        "let s2 = await debug.screenshot(0, @image);",
+        "let i1,i2=debug.encodeImg(s1, \"png\"),debug.encodeImg(s2, \"png\");",
+        "console.log(i1,i2);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {getFailObject} from \"system://core\"",
+        "let s1 = await debug.screenshot(0, @image);",
+        "debug.touch(0, 0, @start, 10, 450);",
+        "await 1;",
+        "let s2 = await debug.screenshot(0, @image);",
+        "const res = ??debug.visCheckImg(s1,s2);",
+        "console.log(res, \"R:\", getFailObject(res)?.reason);",
+        "debug.touch(0, 0, @end, 10, 450);",
+        "console.log(debug.encodeImg(s1, \"png\"),debug.encodeImg(s2, \"png\"))"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## UI Events",
+        "",
+        "Uj UI eventetket lehet definialni `defineEvent` reven. Ezekre a szokasos `addEventListener`-rel lehet feliratkozni.<br>",
+        "Widgetekre az `on<EventName>` property segitsevel egyszerusitett feliratkozas lehetseges (bubble es target fazisban for felhivodni)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {CustomEvent, defineEvent} from \"system://ui.core\"",
+        "{}",
+        "defineEvent(@kutya); // onKutya"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {CustomEvent, defineEvent} from \"system://ui.core\"",
+        "{}",
+        "defineEvent(@kutya); // onLokutya",
+        "screen.onKutya = (e) => { console.log(\"receiveed kutya event\", e.detail, e.currentTarget); console.dir(e);};",
+        "screen.root.firstChild.dispatchEvent(new CustomEvent(@kutya, #{detail: 42}));"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {CustomEvent, FocusEvent, MouseEvent, DragEvent} from \"system://ui.core\"",
+        "{}",
+        "//FocusEvent(@focusIn, #{relatedTarget: screen.root, direction:1});",
+        "//FocusEvent(@mouseDown, #{relatedTarget: screen.root, direction:1});",
+        "MouseEvent(@mouseDown, #{target: screen.querySelector(\".back\"), x:10, y:20})"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "async f1() {",
+        "    await Chrono.delay(1);",
+        "    console.log(\"something\");",
+        "}",
+        "async f2() {",
+        "    await Chrono.delay(2);",
+        "    console.log(\"something\");",
+        "}",
+        "{}",
+        "await.race(f1(),f2());"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Sampla async construction",
+        "",
+        "Althought constructors can't be async a static create function could be used instead.<br>",
+        "This static function can be inherited, by using `this` in new expression it will create instance of the derived class."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "class A {",
+        "    constructor() { console.log(\"A\");}",
+        "    static async create() {",
+        "        await 1;",
+        "        new this();",
+        "    }",
+        "}",
+        "class B extends A {",
+        "    constructor() { super(); console.log(\"B\");}",
+        "}",
+        "{}",
+        "await B.create()"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {DisposableStack} from \"system://core.types\"",
+        "import {objOf} from \"core://functional\"",
+        "import {dispose} from \"system://core\"",
+        "{}",
+        "DisposableStack s;",
+        "s.adopt(42, +> console.log(\"adopted\", ^));",
+        "s.use(object {ku= 42; [Symbol.dispose](...v) { console.log(\"Disposed\", this, ...v);}});",
+        "s.defer(console.log(\"deferred\",?));",
+        "dispose(s);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {DisposableStack,AsyncDisposableStack} from \"system://core.types\"",
+        "import {objOf, pipe} from \"core://functional\"",
+        "import {dispose, asyncDispose, failure, getFailObject} from \"system://core\"",
+        "{}",
+        "AsyncDisposableStack s;",
+        "s.adopt(42, arg => { console.log(\"adopted\", arg)} );",
+        "s.use({ku:42, async [Symbol.asyncDispose](arg) { console.log(\"Disposed\", this, arg)}});",
+        "s.use({tya:42, async [Symbol.asyncDispose](arg) { console.log(\"Disposed\", this, arg)}});",
+        "s.defer(console.log(\"deferred\",?));",
+        "const v = await s[Symbol.asyncDispose]();",
+        "v"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "failure(\"ba\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {defineProperty} from \"system://core\"",
+        "const mySym = Symbol(\"proba symbol\");",
+        "const mySym2 = Symbol(\"proba symbol\");",
+        "decorator @defineProperty(name, conf) {",
+        "    @register(o => defineProperty(o?.prototype ?? o, name, conf))",
+        "} ",
+        "@defineProperty(mySym, #{value: 1024})",
+        "@defineProperty(mySym2, #{get: function() {this.kutya()} })",
+        "class Proba",
+        "{",
+        "    kutya() { 1}",
+        "    prop = 42;",
+        "}",
+        "{}",
+        "const o = new Proba;",
+        "$log(Proba.prototype, o[Symbol.prototype]);",
+        "o.prop, o[mySym], o[mySym2]"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {sortArgs} from \"system://functional\"",
+        "{}",
+        "//sortArgs((a,b)=> b <=> a, 4,5, 3,2,1);",
+        "sortArgs(undef, 4,5, 3,2,1);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {defineWidgetProperty, redefineWidgetProperty} from \"system://ui.core\"",
+        "style anim {",
+        "    window {",
+        "        transition: [",
+        "            [@innerBottom,300ms, @cubic, @easeInOut ]",
+        "        ];",
+        "    }",
+        "}",
+        "{}",
+        "redefineWidgetProperty(@innerBottom, function(val) {",
+        "    this.setInnerSizePx(this.wPx, this.outerHeightPx-val);",
+        "});",
+        "screen.root.innerBottom = 0;",
+        "screen.root.styles.add(anim);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "// todo: transition will throw an error without default value!",
+        "screen.root.innerBottom = screen.root.innerBottom ? 0 : 100;",
+        "screen.root.hPx"
+      ]
+    }
+  ]
+}

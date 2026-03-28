@@ -1,0 +1,63 @@
+{
+  "cells": [
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as ltr from \"system://list.transforms\"",
+        "import {list} from \"system://core.types\"",
+        "",
+        "const vl = list.of(10, 20, 30, 40);",
+        "class Item {",
+        "    name;",
+        "    value;",
+        "}",
+        "list src [",
+        "    Item { name = \"almafa\"; value=42},",
+        "    Item { name = \"kortefa\"; value=24},",
+        "    Item { name = \"barack\"; value=108},",
+        "] ",
+        "{}",
+        "const ml = ltr.map(_ => _ + 2).bind(vl);",
+        "ml[3], ml[3]"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "const ml = ltr.map( item => @transparent object extends item { kutya := this.value}).memoize().bind(src);",
+        "{}",
+        "let i = ml[1];",
+        "console.dir(i);",
+        "src[1].value += 100;",
+        "$log(i.kutya);",
+        "console.dir(i);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "ml[0]"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "...ml"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "let m1 = ml[1];",
+        "src.splice(1, 1, Item { name=\"proba\"; value= -10});",
+        "m1 == ml[1],ml[1];"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Float in xscript",
+        "",
+        "xscript supports tow floating point types",
+        "* float",
+        "* double",
+        "",
+        "Floats have lower precision but can be stored in a value without further allocation. Therefore, it can be a bit faster.",
+        "Numbers postfixed with `f` introduces a float literal value.<br>",
+        "`float` builtin converts a number to float.",
+        "",
+        "Usual promotion rules apply in binary operations: int -> int64 -> float -> double.",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {typeof} from \"system://core\"",
+        "logT(v) {",
+        "    console.log(typeof(v), v)",
+        "}",
+        "{}",
+        "logT(1.25f);",
+        "logT(1.25);",
+        "logT(float(1.25));",
+        "logT(+\"1.2f\");",
+        "logT(+\"1.2\");"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {typeof} from \"system://core\"",
+        "logT(v) {",
+        "    console.log(typeof(v), v)",
+        "}",
+        "{}",
+        "logT(1f+2f);",
+        "logT(1.2f+3.1);",
+        "logT(3+1.25f);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {typeof} from \"system://core\"",
+        "import {range, count} from \"system://itertools\"",
+        "const frange = range(1.1f, 3.8f);",
+        "{}",
+        "$log(typeof(frange[0]), frange[0], frange.length);",
+        "$log(...frange);$log(typeof(...frange));",
+        "$log(...count(1.1f, 0.1f).take(5));$log(typeof(...count(1.1f, 0.1f).take(5)));",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        ""
+      ]
+    }
+  ]
+}

@@ -1,0 +1,209 @@
+import { app, selection } from "./app.xs"
+import { headUnit } from "./toolbox/connections.xs"
+import { basket, BasketElement } from "./basket.xs"
+import radio from "uie/components/radio.ui"
+import tTag from "./components/tag.ui"
+import { Toast } from "~/src/components/toasts.xs"
+import { Messagebox, Button } from "./components/messageboxes.xs";
+import {} from "./details.nss.xs"
+import { reduce } from "system://functional"
+import { keys } from "system://core"
+import alert from "./components/alert.ui"
+import {formatSize, splitFileAndExt, contentGrouping, eliminateHtmlTags} from "./utils/util.xs"
+import {tDropDownItem} from "~/src/components/dropMenu.ui"
+import { i18n, translate } from "system://i18n"
+import {fmt} from "fmt/formatProvider.xs"
+import {map, all, any} from "system://itertools"
+import {isContentTransferred} from "./toolbox/headUnitContentCache.xs"
+import {trackEvent} from "analytics/analytics.xs"
+import {countryGroupingPrio} from "./toolbox/packages/packageModel.xs"
+import {createEntriesByCountry} from "./toolbox/packages/packageView.xs"
+import {gaItem, gaEventPrice} from "./service/googleAnalytics.xs"
+
+<template tDropDownLicenseItem extends=tDropDownItem>
+	own{
+		let discounted = ( item.usedVoucherCode && item.actualPrice.net != item.basePrice.net);
+		formatPrice( price ){
+			return Math.round(price*10)/10.0;
+		}
+	}
+    <text class=paragraph maxW=200 text=(item.dealTypeLocale.title) />
+    <spacer flex=1 />
+    <text class=h2, theme, oneline text=(`${item?.actualPrice?.net} ${item?.actualPrice?.currency}`) visible=(!discounted)/>  
+	<group class=flexible, vertical visible=(discounted) paddingRight=0>
+		<sprite class=strikethrough top=(fragment.basePrice.h /2 ?? 9) w=(fragment.basePrice.w ?? 20)/>
+		<text basePrice class=h2,theme,oneline,right text=(`${item?.basePrice?.net} ${item?.basePrice?.currency}`) />
+		<text class=h2,discountPrice,oneline,right text=(`${ formatPrice(item?.actualPrice?.net)} ${item?.actualPrice?.currency}`) />
+	</group></template>
+
+// todo: It throw an error if initial value was empty. Quick fix with "?." added.
+// item="License Type", but somehow param.hasValue=true
+<template tDropMenuLicenseItem class=flexible,horizontal boxAlign=@stretch>
+	own{
+		let discounted = (item.actualPrice.net != item.basePrice.net);
+		formatPrice( price ){
+			if (!price) return;
+			return Math.round(price*10)/10.0;
+		}
+	}
+    <text class=paragraph maxW=220 wordWrap=1 text=(item?.dealTypeLocale?.title) />
+    <spacer flex=1 />
+    <text class=h2, theme, oneline text=(`${item?.actualPrice?.net} ${item?.actualPrice?.currency}`) visible=(!discounted)/>  
+	<group class=flexible, vertical visible=(discounted) paddingRight=0 /*paddingBottom=10*/ >
+		<sprite class=strikethrough top=(fragment.basePrice.h /2 ?? 9) w=(fragment.basePrice.w ?? 20) />
+		<text basePrice class=h2,oneline,right text=(`${item?.basePrice?.net} ${item?.basePrice?.currency}`) />
+		<text class=h2,discountPrice,oneline,right text=(`${ formatPrice(item?.actualPrice?.net)} ${item?.actualPrice?.currency}`) />
+	</group>
+</template>
+
+export <component packageDetails class=flexible, vertical>
+	own {
+		export let codeError;
+		export let package;
+		export let device = do { headUnit.device ?? headUnit.lastConnectedDevice };
+		let img = ( package.snapshot.image );
+		let description := package.snapshot.description.shortDescription;  
+		let osmIsEnabled = do { SysConfig.get("yellowBox", "enableOSM", true) };
+		let isCompatible = ( device.hasOSM && package.snapshot?.isOSM || !device?.hasOSM && !package.snapshot?.isOSM );
+		export let isAlreadyPurchasedWithValidUntil := package.purchased && package.validUntil;
+		export let isAlreadyPurchasedWithoutValidUntil := package.purchased && !package.validUntil;
+		export let alreadyInCar := !package.purchased && allTransferred;
+		export let someInCar := !package.purchased && !allTransferred && anyTransferred;
+		export let deviceNotPaired := !device;
+		export let osmNotSupported := device?.hasOSM && !osmIsEnabled;
+		export let osmAlertOnScreen := !isCompatible && osmAlertVisible;
+		let osmAlertVisible = true;
+		contains() {
+			if (package?.contents) 
+				contentGrouping(package.contents, countryGroupingPrio, guessCountryList(?,?));
+		}
+		size() {
+			if (package?.contents) 
+				return formatSize(reduce((a,b)=>{a=a+b.size}, 0L, package.contents));
+		}
+		let allTransferred = (device && package?.contents && all(package.contents||[], content=>isContentTransferred(device.fileDB, content)));
+		let anyTransferred = (device && package?.contents && any(package.contents||[], content=>isContentTransferred(device.fileDB, content)));
+	}
+		<alert class=mediumMarginX text=(fmt(i18n`You already purchased this content, valid until: {0}. Check your free update.`, package.validUntil)) visible=(isAlreadyPurchasedWithValidUntil) />
+		<alert class=mediumMarginX text=(i18n`You already purchased this content.`) visible=(isAlreadyPurchasedWithoutValidUntil) />
+		<alert class=mediumMarginX text=(i18n`All contents are present on the car.`) visible=(alreadyInCar) />
+		<alert class=mediumMarginX text=(i18n`Some of the contents are present on the car.`) visible=(someInCar) />
+		<alert class=mediumMarginX text=(i18n`Your device is not paired yet. Connect your phone to purchase.` ) visible=( deviceNotPaired) icon="Connect car.svg" />
+		<alert class=mediumMarginX text=(i18n`Your device contains OSM content. That is not supported by this app.`) visible=(osmNotSupported) />
+		<alert class=mediumMarginX text=(codeError) visible=(codeError) />
+		<sprite class=details img=( img )>
+			<group class=flexible, horizontal, tagList, smallPaddingX>
+				<lister model:={package.tags ?? []} template=tTag />
+			</group>
+		</sprite>
+		<alert class=mediumMarginX text=(i18n`Note that you won’t be able to use this map together with some of your existing maps!`) visible=(osmAlertOnScreen) level=@info icon="alert.svg">
+			<sprite class=icon, normal, mainPaddingX, white img="close.svg" onRelease(){ osmAlertVisible = false }/>
+		</alert>
+		<group class=flexible,vertical,mainContentPadding visible=(package.contentStatus == @ready || package.contentStatus == @error)>
+			<text class=h2, detailTitle text=( ??package.locale.title ) />
+			<text class=paragraph, darkgrey, detailPaddingY text=(package.snapshot.contentRelease ?? "") />
+			<text class=paragraph, detailPaddingY text=( eliminateHtmlTags(description) ) visible=( description )/>
+			<group class=flexible,vertical visible=(package.contentStatus == @ready)>
+				<text class=paragraph, theme text=(fmt(i18n`Size: {0}`, size())) />
+				<text class=paragraph, theme text=(fmt(i18n`Includes: {0}`, contains())) visible=(!description)/>
+			</group>
+			<group class=flexible,vertical,detailPaddingY visible=(package.contentStatus == @error && !description)>
+				<text class=paragraph text=i18n`Sorry, couldn't fetch details.` />
+			</group>
+		</group>
+		<group class=flexible, vertical, mainContentPadding visible=(package.contentStatus!=@ready && package.contentStatus!=@error) >
+			<text class=loading text=i18n`Loading...` />
+		</group>
+		<wheel class=fill/>
+</component>
+
+export <fragment frDetails class=flexible,vertical >
+	own{
+		let it = ( selection.package );
+		let device = (headUnit.device ?? headUnit.lastConnectedDevice);
+		let osmIsEnabled = do { SysConfig.get("yellowBox", "enableOSM", true) };
+		let availableSalesPackages := Iter.filter( e=>!e.usedScratchCode, selection.package.salesPackage ).toArray();
+	}
+	<packageDetails packDetails package=(selection.package) flex=1 class=scrollable>
+	<group class=flexible, vertical, mainContentPadding, subs visible=(??availableSalesPackages.length)>
+		<sprite class=bg, topLine />
+		<dropMenu class=subs
+			title=i18n`License Type`
+			dir=@up
+			value<=>selection.subscription items=(availableSalesPackages) 
+			templateItem = tDropDownLicenseItem
+			templateMenu = tDropMenuLicenseItem
+			defaultH = (it.discount ? 86 : 65)
+			labelFieldH = (it.discount ? 86 : 56)
+			enable = (availableSalesPackages.length > 1)
+		/>
+		<button class=large text=i18n`Add To Cart` onRelease(){ addToCart( it ) } enable=( device && (osmIsEnabled || !device.hasOSM) && selection.subscription)/> //TODO subscription ellenorzes
+	</group>
+</fragment>
+
+
+export addToCart( item ) {
+	if ( selection.package.inBasket ) {	// mar akosarban van
+		const basketIdx = basket.list.findIndex( e=>e.package.packageCode == selection.package.packageCode );
+		const inBasketElement = basket.list[ basketIdx ];
+		if ( inBasketElement.salesPackage.salesPackageCode == selection.subscription.salesPackageCode ) {
+			trackEvent("add_to_cart_failed", {packageCode: selection.package.packageCode, salesPackageCode: selection.subscription.salesPackageCode });
+			console.log( "[basket] The item is already in the cart: packageCode: ", selection.package.packageCode, ", package name: ", selection.package.locale.title, ", salesPackageCode: ", selection.subscription.salesPackageCode );
+			showAlreadyInBasketNoti( i18n`This item is already in your cart.` );
+		}
+		else {	//update subscription
+			trackEvent("remove_from_cart", #{
+				...gaEventPrice(inBasketElement.salesPackage),
+				items: [ gaItem(selection.package, inBasketElement.salesPackage) ],
+			});
+			trackEvent("add_to_cart", #{
+				...gaEventPrice(selection.subscription),
+				items: [ gaItem(selection.package, selection.subscription) ],
+			});
+			basket.list.splice( basketIdx, 1, new BasketElement( selection.package, selection.subscription ));
+			console.log( "[basket] Updating the cart with new salesPackageCode: packageCode: ", selection.package.packageCode, ", package name: ", selection.package.locale.title, ", new salesPackageCode: ", selection.subscription.salesPackageCode );
+			showAlreadyInBasketNoti( i18n`Updated your cart with new deal of this item.` );
+		}
+	}
+	else {
+		trackEvent("add_to_cart", #{
+			...gaEventPrice(selection.subscription),
+			items: [ gaItem(selection.package, selection.subscription) ],
+		});
+		console.log( "[basket] Add item to cart: packageCode: ", selection.package.packageCode, ", package name: ", selection.package.locale.title, ", salesPackageCode: ", selection.subscription.salesPackageCode );
+		basket.add( new BasketElement( selection.package, selection.subscription ) );
+		app.selectScreenById( @Shop, @set ); 
+	}
+}
+
+showAlreadyInBasketNoti( text ){
+	let noti = new Toast( text );
+	noti.addTimeout( 2s ).setId("alreadyInbasket").show( noti );
+}
+
+export guessCountryList( contents, groupingTerm ){
+	const common = {};
+	const other = {};
+	let otherCountries = false;
+	const entriesByCountry = createEntriesByCountry(contents, groupingTerm);
+	for (const item in contents) {
+		if (let isoCountryCode = item?.country) {
+			const countryCode = item?.igoCountryCode ? "_" + item.igoCountryCode : undef;
+			if (entriesByCountry.has(countryCode)) {
+				common[countryCode] = 1;
+			} else {
+				otherCountries = true;
+			}
+		}
+		else if (name != "dummy") {
+			other["other important files"] = 1;
+		}
+	}
+	let str = "";
+	if (len(common)) str += [...map( e=>translate(string(e)), keys(common))].join(", ");
+	if (otherCountries) str += i18n` and other countries`;
+	
+	if (str && len(other)) str += "; ";
+	if (len(other)) str += "\n" + i18n`Other important files`;
+	return str;
+}

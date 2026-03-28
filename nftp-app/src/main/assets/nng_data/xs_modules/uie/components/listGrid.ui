@@ -1,0 +1,436 @@
+import { Map } from "system://core.types"
+import { map } from "system://functional"
+import { typeof, getIterator, hasProp } from "system://core"
+import * as iter from "system://itertools"
+import {unobservedValue} from "system://core.observe"
+import {calcDpValue} from "system://ui.units"
+import {@registerStyle} from "uie/styles.xs"
+
+// trackSize spec:
+//   - length: 5, 1fr, 20% etc. (percentages refer to container width or container height)
+//   - minMax: { min: <length>|@auto, max: <length>|@auto}
+// repeations in the trackList:
+//   - repeat: { repeat: <num> | @autoFill, list|size: <length>|<minMax> }
+
+// auto trackSize spec (like autoRows and autoCols)
+//  - length: fr excluded, percentage ok: 5, 20% etc.
+//  - minMax: { min:<length>|@auto, max: <length>|@auto }
+//  - cells:  { cells: num } => maybe later cell format could be something more specific as with trackLists
+//            container size will be diveded accounting gaps (num-1 of them)
+
+class GridLayouter {
+    #templateRows;
+    #templateColumns;
+    #autoRows;
+    #autoColumns;
+    #rowGap;
+    #colGap;
+    #flow = @row;
+    listView = undef;
+    dependsOnLayoutProperty = true;
+    unitIsDp = true;
+    constructor(listView, params) {
+        this.listView = listView;
+        this.#colGap = params.colGap;
+        this.#rowGap = params.rowGap;
+        this.#flow = params.flow;
+        this.init(params);
+    }
+
+    get templateColumns() { this.#templateColumns }
+    get templateRows() { this.#templateRows }
+    get autoColumns() { this.#autoColumns }
+    get autoRows() { this.#autoRows }
+    get rowGap() { this.#rowGap }
+    get colGap() { this.#colGap }
+    get flow() { this.#flow }
+    get numCells() { this.#flow == @row ? this.#templateColumns.length : this.#templateRows.length }
+
+    init(params) {
+        this.#templateColumns = this.#processTrackList(params.templateColumns, @col);
+        this.#templateRows = this.#processTrackList(params.templateRows, @row);
+        this.#autoColumns = this.#processAutoTracks(params.autoColumns, @col);
+        this.#autoRows = this.#processAutoTracks(params.autoRows, @row);
+    }
+
+    /// layouter interface
+	trackStart(idx) {  const numCells = this.numCells; idx / numCells * numCells }
+    nextLayout(obj, idx, lastTrack, pos, isRev, forceLast) {
+		//console.log("layout", idx, "pos: ", pos);
+        const track =  lastTrack ? lastTrack : this.getTrack(obj, idx);
+        
+        const cell = track.getCellSpec(obj, idx); // cell specification for obj in this track
+        if (obj) {
+            this.updateObjectSize(obj, idx, cell);
+            track.updateSize(obj.w, obj.h); 
+        
+            // NOTE: obj is already correctly sized at this point, for the sake of justify in row flow, and align in col flow
+            // the code below uses measured size, and aligns inside cell based on alignSelf or justifySelf
+            if (this.#flow == @row) 
+                this.#justifyInCell(obj, cell, 0);  
+            else this.#alignInCell(obj, cell, 0);
+        }
+        
+        let size = track.size;
+        if (track.idx > 0) // gap is added at the start of tracks. so first track doesn't have one
+            size += this.#flow == @row ? this.#rowGap : this.#colGap;
+        const finished = (!isRev && (cell.localIdx + 1) == track.numCells)
+                         || (isRev && cell.localIdx == 0)  // reached first cell while reversing
+                         || forceLast;  // also when list is finished
+        // when track is finished:
+        if (finished && this.#flow == @row) {
+            // align contents inside cells
+            const top = pos - (isRev ? size : 0) + (track.idx > 0 ? this.#rowGap : 0);
+            for (const template in track.cells) {
+                if (!template) continue;
+                const align = template.alignSelf;
+                if (align == @stretch) { // todo: should we handle the case, when measured template height overflows alignSpace? (for. ex solid filled images)
+                                         //       in these cases we should do also an ensureSizeUpdated with maxH as alignSpace and h as @auto
+                    const alignSpace = track.size - template.marginTop - template.marginBottom;
+                    template.ensureSizeUpdated(template.w, alignSpace); // width was already calculated when layouting individual cells
+                }
+                this.#alignInCell(template, cell, top);
+            }
+            //console.log(`layout finished top: ${top}  ${size} (${pos} at ${idx}) track: ${track}`);
+        } else if (finished && this.#flow == @col) {
+            // justify (horizontal align) contents inside cells
+            const offset = pos - (isRev ? size : 0) + (track.idx > 0 ? this.#colGap : 0);
+            for (const template in track.cells) {
+                if (!template) continue;
+                const justify = template.justifySelf;
+                if (justify == @stretch) {
+                    const cellSpace = track.size - template.marginLeft - template.marginRight;
+                    template.ensureSizeUpdated(cellSpace, template.h); // height was already calculated when layouting individual cells
+                }
+                this.#justifyInCell(template, cell, offset);
+            }
+            //console.log(`layout finished left: ${offset}  ${size} (${pos} at ${idx}) track: ${track}`);
+        }
+
+        return size, (finished ? undef : track);
+    }
+/*    shift(list, pos) {
+		console.log("shift", pos);
+        list.scrollNode.offsetY = -int(pos);
+    } */
+    log(...args) {
+		console.log(...args);
+	}
+
+    #justifyInCell(template, cell, offset) {
+        const justify = template.justifySelf;
+
+        if (justify == @start || justify == @stretch || justify == @left) {
+            template.left = offset + cell.left + template.marginLeft;
+        } else if (justify == @center || justify == @middle) {
+            template.left = offset + cell.left + template.marginLeft + 
+                            (cell.w - template.w - template.marginLeft - template.marginRight) / 2;
+        } else if (justify == @end || justify == @right) {
+            template.left = offset + cell.left + cell.w - template.marginRight - template.w;
+        }
+    }
+
+    #alignInCell(template, cell, offset) {
+        const align = template.alignSelf;
+
+        if (align == @start || align == @stretch || align == @top) {
+            template.top = offset + cell.top + template.marginTop;
+        } else if (align == @center || align == @middle) {
+            template.top = offset + cell.top + template.marginTop + 
+                          (cell.h - template.h - template.marginTop - template.marginBottom) / 2;
+        } else if (align == @end || align == @bottom) {
+            template.top = offset + cell.top + cell.h - template.marginBottom - template.h;
+        }
+        // todo: what about baseline align inside cells?
+        //       it is doable, but we need baseline info from template (probably not a huge thing)
+    }
+/* Not needed right now, left for future
+  onViewChanged(list) {
+        this.init();
+        this.listView.refreshLayout();
+        return true;
+    }*/
+
+    updateObjectSize(obj, idx, cell) {
+        if (this.#flow == @row) {
+            const justify = obj.justifySelf;
+            const cellSpace = cell.w - obj.marginLeft - obj.marginRight; // cell widths are precalculated based on templateColumns
+            const w = justify == @stretch ? cellSpace : @auto; 
+
+            obj.ensureSizeUpdated(w, @auto, { maxW: cellSpace });
+        } else { // `@col` flow
+            const align = obj.alignSelf;
+            const cellSpace = cell.h - obj.marginTop - obj.marginBottom;
+            const h = align == @stretch ? cellSpace : @auto; 
+
+            obj.ensureSizeUpdated(@auto, h, { maxH: cellSpace });
+        }
+    }
+
+
+    /// implementation methods
+    getTrack(obj, idx) {
+        const numCells = this.numCells;
+        return new Track(this, idx / numCells, numCells);
+    }
+
+    #processTrackList(trackList, type) {
+        const sizeOnAxis = type == @col ? this.listView.w : this.listView.h;
+        const gap = type == @col ? this.#colGap : this.#rowGap;
+        let hasFractions = false; // trackList contains fractions which have to be recomputed after processing length values
+        let sumFr = 0.0;
+        let processed = [];
+        let sumFixed = 0; // sum of fixed sizes
+
+        const addLength = length => {
+            if (??length.fr) {
+                hasFractions = true;
+                sumFr += length.fr;
+                // do not add fixed size for fractions, otherwise fraction will eat up that space as well
+                // NOTE: this can lead to overflow if extra size is not subtracted
+                // an other viewpoint of this could be that size + fraction is the same as { min: size, max: fraction }
+                // this can be a problem with negative size parts, probably we shouldn't allow them
+                processed.push(length);
+            } else {
+                sumFixed += length;
+                processed.push(length);
+            }
+        };
+
+        for (let spec in trackList) {
+            const type = typeof(spec);
+            if (type == @object) {
+                // minMax spec -> won't process it for flow direction, if it contains auto sizes
+                //                it may contain only lengths
+                //                as items would jump in size
+                //                as size depends on all visible items in other tracks (and we don't know all the tracks)
+                //                only so much as listView displays
+                if (hasProp(spec, @min) && hasProp(spec, @max)) {
+                    const min = spec.min == @auto ? @auto : parseLength(spec.min, this.listView, sizeOnAxis);
+                    const max = spec.max == @auto ? @auto : parseLength(spec.max, this.listView, sizeOnAxis);
+                    if (min && max)
+                        processed.push({ min, max });
+                    continue;
+                } else if (hasProp(spec, @repeat)) { // repeat spec
+                    let repeat = spec.repeat;
+                    let hasError = false; // hasProp size or list
+                    let repeatRes = [];
+                    let list = map(spec.list ?? [spec.size], item => {
+                        // todo: minmax is valid here also
+                        parseLength(item, this.listView, sizeOnAxis)
+                        // todo: fraction lengths for @autofill are not valid (how to autofill on that)
+                    });
+                    if (repeat == @autoFill) {
+                        // precalculate size of list, including gaps
+                        const listSize = iter.reduce(list, (size, item) => size + (item.length??item), 0) + gap * (list.length - 1) ;
+                        const sumGaps = processed.length > 0 ? gap * (processed.length - 1) : 0;
+                        let remainingSize = sizeOnAxis - sumFixed - sumGaps;
+                        if (processed.length > 0) // when repeation adds the first item, gap doesn't count
+                            remainingSize -= gap; 
+                        while (remainingSize > listSize) {
+                            for (let item in list) 
+                                addLength(item); // todo: share minMax processing too
+                            remainingSize -= listSize + gap  // account for next repetition (starts with gap)    
+                        }
+                    } else if(typeof(repeat) == @int) {
+                        while (repeat-- > 0)
+                            for (let item in list) 
+                                addLength(item); // todo: share minMax processing too
+                    } else {
+                        // invalid repeat
+                        hasError = true;
+                    }
+                    continue;
+                } 
+            } else if (spec == @auto) { // auto size
+                // auto only allowed in the fill (non flow) direction
+                // raise error if true (flow != type)
+                processed.push(spec);
+                continue;
+            }
+
+            const length = parseLength(spec, this.listView, sizeOnAxis);
+            if (length) {
+                addLength(length);
+            } else {
+                // todo: raise error for unknown spec
+            }
+        }
+
+        if (hasFractions) {
+            // go over trackSizeList again, and resolve fr's where needed
+            // this could impact sumFr based on min max settings
+            const sumGaps = gap * (processed.length - 1);
+            let remainingSize = sizeOnAxis - sumGaps - sumFixed;
+            if (remainingSize < 0) remainingSize = 0;
+
+            processed = map(processed, spec => {
+                if (typeof(spec) == @object) {
+                    if (??spec.fr) {
+                        return remainingSize * spec.fr / sumFr + spec.length; 
+                    } else { // minmax spec
+                        // similar to flex layout size distribution
+                        // - when has a fixed max: distribute size, and cap with max, remove fr from sumFr2 (sumFr in this iteration)
+                        // - when has a fixed min: distribute size and add it to min (min should be part of sumFixed)
+                        // - adjust sumFr at the end of iteration, and give it another go, if not reached 0
+                    }
+                }   
+                return spec
+            })
+        }
+
+        return processed;
+    }
+
+    #processAutoTracks(autoTrack, flow) {
+        const type = typeof(autoTrack);
+        const sizeOnAxis = flow == @col ? this.listView.w : this.listView.h;
+        if (type == @int || type == @double || type == @float) { // simple size
+            return { min: autoTrack, max: autoTrack }
+        } else if (type == @object) {
+            if (hasProp(autoTrack, @min) || hasProp(autoTrack, @max)) {
+                return {
+                    min: calcDpValue(??autoTrack.min, this.listView, sizeOnAxis) ?? @auto,
+                    max: calcDpValue(??autoTrack.max, this.listView, sizeOnAxis) ?? @auto
+                }
+            } else if (hasProp(autoTrack, @cells)) { // fixed number of cells
+                const gap = type == @col ? this.#colGap : this.#rowGap;
+                const trackSize = (sizeOnAxis - (gap * (autoTrack.cells - 1))) / autoTrack.cells;
+                return { min: trackSize, max: trackSize }
+            }
+
+            // try iterable (ex. unit value)
+            const size = calcDpValue(autoTrack, this.listView, sizeOnAxis);
+            if (size != undef) {
+                return { min: size, max: size }
+            }
+        }
+
+        return { min: 0, max: @auto } // fall back to auto size
+    }
+}
+class LengthAndFr {
+    length =0;
+    fr = 0;
+    constructor(l,f) {
+        this.length = l ?? 0;
+        this.fr     = f ?? 0;
+    }
+}
+
+parseLength(spec, visObj, sizeOnAxis) {
+    let l,f = calcDpValue(spec, visObj, sizeOnAxis);
+    return f ? new LengthAndFr(l,f) : l;
+};
+
+
+class Track {
+    grid;
+    idx;
+    numCells;
+    #size = 0;
+    cells = [];
+    constructor(grid, idx, numCells) {
+        this.grid = grid;
+        this.idx = idx;
+        this.numCells = numCells;
+        this.cells.resize(numCells);
+    }
+
+    get flow() { this.grid.flow }
+    // size on main axis
+    get size() { this.#size }
+
+    updateSize(objW, objH) {
+        let newSize = (this.flow == @row) ? objH : objW;
+        const trackSpec = (this.flow == @row) ? this.grid.autoRows : this.grid.autoColumns;
+        
+        if (trackSpec.min != @auto && newSize < trackSpec.min) {
+            newSize = trackSpec.min
+        } else if (trackSpec.max != @auto && newSize > trackSpec.max) {
+            newSize = trackSpec.max
+        }
+
+        if (newSize > this.#size) {
+            this.#size = newSize;
+        }
+    }
+
+    getCellSpec(obj, idx) {
+        const localIdx = idx % this.numCells;
+        if (this.cells[localIdx] != obj) {  // store object if not already
+            this.cells[localIdx] = weak(obj);
+        }
+        if (this.flow == @row) {
+            let left = 0;
+            for (let i = 0; i < localIdx; ++i)
+                left += this.grid.templateColumns[i];
+            left += localIdx * this.grid.colGap;
+            let w = this.grid.templateColumns[localIdx];
+            let h = this.size; 
+            return { left, top: 0, w, h, localIdx } // cell top depends on track's position, and whether it has a gap at the beginning (see: nextLayout)
+        } else { // col flow
+            let top = 0;
+            for (let i = 0; i < localIdx; ++i)
+                top += this.grid.templateRows[i];
+            top += localIdx * this.grid.rowGap;
+            let h = this.grid.templateRows[localIdx];
+            let w = this.size; 
+            return { left: 0, top, w, h, localIdx }
+        }
+    }
+}
+
+// todo: listView could have align, valign and/or alignContent justifyContent properties
+//       maybe this could be solved through the layouter also? (if we know that the whole list is presented)
+//       should reuse the align/valign flags on widgets
+
+// Decisions affecting functionality
+//  - specified w and h on templates act as user sepcifications, they won't be overwritten by grid layout. 
+//    Not even when align or justify is stretch (as opposed with current flex layout), but this functionality is more in line 
+//    with how grids and boxes on the web work.
+
+use customWidgetProperties = colSpan, rowSpan;
+
+export default <component listGrid>
+    own {
+        export let rowGap = 10;
+        export let colGap = 10;
+        export let templateColumns = [1fr, 1fr];
+        export let templateRows = [1fr, 1fr];
+        export let autoRows = @auto;
+        export let autoColumns = @auto;
+        export let flow = @row;
+    }
+    <listView list class=fill,grid layouter=(new GridLayouter(this, {rowGap, colGap, templateColumns, autoRows, flow, templateRows, autoColumns }))
+                   orientation=(flow == @row ? @vertical : @horizontal) attributes={default:true} >
+        <wheel horizontal=(flow == @col) />
+        <scroll class=(flow == @row ? @vertical : @horizontal)/>
+    </listView>
+</component>
+
+@registerStyle
+style gridStyles {
+    listGrid {
+        component: listGrid;
+    }
+
+    listView.grid > scroll {
+        scroll: (this.parent.scroll);
+        position:@fixed;
+    }
+
+    listView.grid > scroll.vertical {
+        w: 10;
+        h: 100%;
+        right: 0;
+        orientation: @vertical;
+    }
+
+    listView.grid > scroll.horizontal {
+        h: 8;
+        w: 100%;
+        bottom: 0;
+        orientation: @horizontal;
+    }
+}

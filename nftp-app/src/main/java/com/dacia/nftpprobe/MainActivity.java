@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.view.View;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.FrameLayout;
 
@@ -97,6 +98,115 @@ public class MainActivity extends Activity {
         }
 
         handleIntent(getIntent());
+
+        // Auto-start if launched with --ez auto_test true
+        if (getIntent().getBooleanExtra("auto_test", false)) {
+            new Thread(() -> {
+                try {
+                    NngEngine engine = NngEngine.getInstance();
+                    String result = engine.init(this);
+                    Log.i("NftpProbe", "Auto-init: " + result);
+                    Log.i("NftpProbe", "Initialized: " + engine.isInitialized());
+
+                    if (!engine.isInitialized()) return;
+
+                    com.nng.uie.api.androidConnection aconn = com.nng.uie.api.androidConnection.INSTANCE;
+
+                    // Uses real NNG native modules via asyncEval:
+                    // - system://socket for TCP
+                    // - system://serialization for Stream(@compact) / Reader
+                    // - system://math for bitwise ops (|, &, << not supported as operators)
+                    // - system://core.types for DataWriter/DataReader/ArrayBuffer
+                    // Note: core/nftp.xs can't be imported from asyncEval, so we do
+                    // manual NFTP packet framing but use REAL NNG serialization.
+
+                    // Helper: build the common init+connect preamble
+                    String preamble =
+                        "const sock = System.import('system://socket');" +
+                        "const ct = System.import('system://core.types');" +
+                        "const math = System.import('system://math');" +
+                        "const ser = System.import('system://serialization');" +
+                        "const s = await sock.connect(#{host:'10.0.0.78', port:9876});" +
+                        "const initStr = 'YellowBox/1.8.13+e14eabb8';" +
+                        "const bl = 1+1+initStr.length+1; const pl = 4+bl;" +
+                        "const ib = new ct.ArrayBuffer(pl); const iw = ct.DataWriter(ib);" +
+                        "iw.u8(math.and(pl,0xFF));iw.u8(math.and(math.shr(pl,8),0x7F));" +
+                        "iw.u8(1);iw.u8(0);iw.u8(0);iw.u8(1);iw.string(initStr);" +
+                        "await s.write(ib);";
+
+                    // Helper: send QueryInfo and parse response
+                    String sendQuery =
+                        "const qbl = 1+p.byteLength; const qpl = 4+qbl;" +
+                        "const qb = new ct.ArrayBuffer(qpl); const qw = ct.DataWriter(qb);" +
+                        "qw.u8(math.and(qpl,0xFF));qw.u8(math.and(math.shr(qpl,8),0x7F));" +
+                        "qw.u8(2);qw.u8(0);qw.u8(4);qw.writeBytes(p);" +
+                        "await s.write(qb); const qr = await s.read(4096);" +
+                        "const rd = ct.DataReader(qr);" +
+                        "rd.u8();rd.u8();rd.u8();rd.u8();" +
+                        "const qs = rd.u8();";
+
+                    String parseResponse =
+                        "const d = qr.slice(5); const rr = ser.Reader(d); const v = rr.read();";
+
+                    // Test 1: Init handshake
+                    String initScript = preamble +
+                        "const resp = await s.read(1024);" +
+                        "const r = ct.DataReader(resp);" +
+                        "r.u8();r.u8();r.u8();r.u8();" + // skip header
+                        "const status = r.u8();" +
+                        "const ver = r.u8();" +
+                        "const name = r.string();" +
+                        "SysConfig.set('probe','init', name + ' v' + ver + ' status=' + status);" +
+                        "s.close(); 'init done'";
+                    Object r1 = engine.evalSync(aconn, initScript, 15000);
+                    Log.i("NftpProbe", "Init: " + engine.formatResult(r1));
+                    Log.i("NftpProbe", "RESULT init = " + engine.formatResult(
+                        engine.evalSync(aconn, "SysConfig.get('probe','init','')", 3000)));
+
+                    // Test 2: QueryInfo @fileMapping (real NNG serialization)
+                    String fmScript = preamble + 
+                        "const resp = await s.read(1024);" +
+                        "SysConfig.set('probe','init_resp','got '+resp.byteLength+' bytes');" +
+                        "s.close(); 'fm done'";
+                    Object r2 = engine.evalSync(aconn, fmScript, 15000);
+                    Log.i("NftpProbe", "FM: " + engine.formatResult(r2));
+                    Log.i("NftpProbe", "RESULT qi_fm = " + engine.formatResult(
+                        engine.evalSync(aconn, "SysConfig.get('probe','qi_fm','')", 3000)));
+                    Log.i("NftpProbe", "RESULT qi_fm_status = " + engine.formatResult(
+                        engine.evalSync(aconn, "SysConfig.get('probe','qi_fm_status','')", 3000)));
+
+                    // Test 3: QueryInfo @device, @brand
+                    String devScript = preamble + "await s.read(1024);" +
+                        "const st = ser.Stream(@compact); st.add((@device, @brand));" +
+                        "const p = st.transfer();" + sendQuery +
+                        "if(qs==0){" + parseResponse +
+                        "SysConfig.set('probe','qi_dev','status='+qs+' val='+v);}" +
+                        "s.close(); 'dev done'";
+                    Object r3 = engine.evalSync(aconn, devScript, 15000);
+                    Log.i("NftpProbe", "Dev: " + engine.formatResult(r3));
+                    Log.i("NftpProbe", "RESULT qi_dev = " + engine.formatResult(
+                        engine.evalSync(aconn, "SysConfig.get('probe','qi_dev','')", 3000)));
+
+                    // Test 4: @ls directory listing
+                    String lsScript = preamble + "await s.read(1024);" +
+                        "const st = ser.Stream(@compact);" +
+                        "st.add((@ls, 'content', #{fields: (@name, @size)}));" +
+                        "const p = st.transfer();" + sendQuery +
+                        "if(qs==0){" + parseResponse +
+                        "SysConfig.set('probe','qi_ls','status='+qs+' val='+v);}" +
+                        "s.close(); 'ls done'";
+                    Object r4 = engine.evalSync(aconn, lsScript, 15000);
+                    Log.i("NftpProbe", "LS: " + engine.formatResult(r4));
+                    Log.i("NftpProbe", "RESULT qi_ls = " + engine.formatResult(
+                        engine.evalSync(aconn, "SysConfig.get('probe','qi_ls','')", 3000)));
+
+                    Log.i("NftpProbe", "=== ALL REAL-CODE TESTS COMPLETE ===");
+
+                } catch (Throwable t) {
+                    Log.e("NftpProbe", "Auto-test error", t);
+                }
+            }).start();
+        }
     }
 
     private void showTab(Button tab, View view) {
@@ -118,9 +228,16 @@ public class MainActivity extends Activity {
 
     private void setupProbeTab() {
         probeView.findViewById(R.id.btnConnect).setOnClickListener(v -> {
+            log("Connect button clicked");
             android.widget.EditText editHost = probeView.findViewById(R.id.editHost);
             String host = editHost.getText().toString().trim();
-            if (!host.isEmpty()) runProbeOverTcp(host, 9876);
+            log("Host: '" + host + "'");
+            if (!host.isEmpty()) {
+                log("Calling runProbeOverTcp...");
+                runProbeOverTcp(host, 9876);
+            } else {
+                log("Host is empty!");
+            }
         });
 
         probeView.findViewById(R.id.btnNngProbe).setOnClickListener(v -> {
@@ -162,6 +279,52 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> txtResult.setText(err));
                     log(err);
                     t.printStackTrace();
+                }
+            }).start();
+        });
+
+        probeView.findViewById(R.id.btnConnectEmulator).setOnClickListener(v -> {
+            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
+            android.widget.EditText editHost = probeView.findViewById(R.id.editHost);
+            String host = editHost.getText().toString().trim();
+            if (host.isEmpty()) host = "10.0.0.78";
+            final String finalHost = host;
+            
+            txtResult.setText("NNG TCP connecting to " + host + ":9876...\n");
+            new Thread(() -> {
+                try {
+                    NngEngine engine = NngEngine.getInstance();
+                    if (!engine.isInitialized()) {
+                        runOnUiThread(() -> txtResult.setText("Engine not initialized. Start it first."));
+                        return;
+                    }
+                    String result = engine.connectToEmulatorNng(finalHost, 9876);
+                    runOnUiThread(() -> txtResult.setText(result));
+                    log(result);
+                } catch (Throwable t) {
+                    String err = "Error: " + t.getClass().getSimpleName() + ": " + t.getMessage();
+                    runOnUiThread(() -> txtResult.setText(err));
+                    log(err);
+                }
+            }).start();
+        });
+
+        probeView.findViewById(R.id.btnQueryDisk).setOnClickListener(v -> {
+            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
+            txtResult.setText("Querying disk info via NNG...\n");
+            new Thread(() -> {
+                try {
+                    NngEngine engine = NngEngine.getInstance();
+                    if (!engine.isInitialized()) {
+                        runOnUiThread(() -> txtResult.setText("Engine not initialized."));
+                        return;
+                    }
+                    String result = engine.queryDiskInfo();
+                    runOnUiThread(() -> txtResult.setText(result));
+                    log(result);
+                } catch (Throwable t) {
+                    String err = "Error: " + t.getMessage();
+                    runOnUiThread(() -> txtResult.setText(err));
                 }
             }).start();
         });

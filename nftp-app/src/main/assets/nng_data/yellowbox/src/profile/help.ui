@@ -1,0 +1,143 @@
+import { app, config } from "../app.xs"
+import {} from "./userProfile.nss.xs"
+import { currentUser, LinkStyle } from "./user.ui"
+import {TextStyle} from "system://ui.types"
+import { i18n } from "system://i18n"
+import { frUserScreenBase } from "./userProfile.ui"
+import { openUrl, fmtTuple } from "../utils/util.xs"
+import { languages } from "../utils/languages.xs"
+import { brandTexts } from "~/brands/brandTexts.xs"
+import { entries } from "system://core"
+import { platform } from "system://os"
+
+export TextStyle BoldStyle { fontWeight = @bold }
+
+<template tHelpMain class=flexible, horizontal onRelease(){ item?.action ? item.action() : undef }>
+    <text class= twoline, medium, mainPaddingX text=( item.label ?? "")/>
+    <spacer flex=1>
+    <sprite class=icon, small, actionChevron visible=( !item?.type )/>
+    <sprite class=separator, list>
+</template>
+
+<template tHelpOSUpdateTitle class=flexible, vertical, mediumPaddingX>
+	<text class=h2, helpOSUpdateTitle text=( item.label ?? "")/>
+	<sprite class=separator, list, mediumPaddingX>
+</template>
+
+<template tHelpTitle class=flexible, vertical, mediumPaddingX, helpTitle>
+	<text class=twoline, helpTitle, smallPaddingY, h2 text=( item.label ?? "" ) valign=@center/>
+	<sprite class=separator>
+</template>
+
+<template tHelp class=flexible, horizontal>
+	<sprite class=decorLine />
+	<sprite class=helpIconContainer>
+		<sprite class=helpIcon, icon, normal img=(item.icon) />
+	</sprite>
+	<group class=flexible, vertical, largePaddingX>
+		<text class=medium wordWrap=12 text=(fmtTuple(item?.label ?? "")) onRelease=(item?.linkOnrelease) />
+		<button class=large, form, secondary text=(item?.button?.label) onRelease(){ item?.button?.action()} visible=( (item?.button ?? false) && (item?.button?.visible ?? true) ) />
+		<spacer class=help />
+		<sprite class=separator, list, largePaddingX visible=(index < owner.model.length - 1 )/>
+	</group>
+</template>
+
+getLocalizedLink(link) {
+	let matchLang = config.translatedLangs[languages.langCode] ?? "en";
+	return link.replace("<lang>", matchLang);
+}
+
+const categories = [
+	//{ label: i18n`Help`, type: @title },
+	{ field: i18n`How to use the shop?`, onRelease(){ app.next(@HelpShop) }, type: @button },
+	{ field: i18n`How to connect your car?` , onRelease(){ app.next(@HelpConnect) }, type: @button },
+	{ field: i18n`How to transfer your maps to your car?`, onRelease(){ app.next(@HelpTransfer) }, type: @button },
+	// { field: i18n`INSTALL MANDATORY SOFTWARE UPDATE (OS UPDATE)`, onRelease(){ app.next(@HelpOsUpdate) }, type: @button },
+	{ field: i18n`Frequently asked questions`, onRelease(){ openUrl( getLocalizedLink(config.links.faq ?? config.links.default) ) }, type: @link },
+	{ field: i18n`Step-by-step Guide`, onRelease(){ openUrl( getLocalizedLink(config.links.guide ?? config.links.default)  ) }, type: @link },
+	{ field: i18n`Customer Care Services`, onRelease(){ openUrl( getLocalizedLink(config.links.contact) ) }, type: @link }
+];
+
+const helpShop = [
+	{ label: i18n`How to use the shop?`, type: @title },
+	{ label: i18n`Before you buy something, you need to sign in or create your Naviextras account in this application`, icon: "profile.svg", button: object{ label=i18n`Sign In`; action(){ currentUser.copyToForm(); app.next(@UserSignIn); }; visible:=(!currentUser.token) } },
+	{ label: i18n`After you signed in, at least once you need to connect your phone to your car`, icon:"car_connected.svg", button: { label: i18n`How?`, action(){app.next(@HelpConnect)} } },
+	{ label: i18n`Now you are ready to buy anything from the shop`, icon: "shop.svg", button: { label: i18n`Shop`, action(){app.next(@Shop)} } },
+];
+
+const helpConnect = [
+	{ label: i18n`How to connect your car?`, type: @title },
+	{ label: (i18n`In your car navigation tap the {0} button`, (BoldStyle, i18n`Options > Map Update > Options > Update with Phone`)), icon: "updateMenu.svg", button: { label: i18n`Cannot Find`, action(){ openUrl(getLocalizedLink(config.links.guide)) } } },
+	{ label: i18n`Connect your phone to your car with a USB cable`, icon: "usb.svg" },
+];
+
+const helpTransfer = [
+	{ label: i18n`How to transfer your maps to your car?`, type: @title },
+	{ label: i18n`In your Owned maps list you can select some maps or full map packs and download them to your phone`, icon: "toPhone.svg", button: {label: i18n`Owned Maps`, action(){app.next(@Maps)} } },	
+	{ label: i18n`After you downloaded the maps to your phone you need to connect your phone with your car`, icon: "car_connected.svg", button: {label: i18n`How?`, action(){app.next(@HelpConnect)} } },	
+	{ label: i18n`Once you connected, you can transfer your maps from your phone to your car`, icon: "toCar.svg" },		
+];
+
+const brandText = brandTexts[SysConfig.get("yellowbox", "brand", "dacia_ulc")];
+
+const helpOsUpdate = [
+	{label: i18n`INSTALL MANDATORY SOFTWARE UPDATE (OS UPDATE)`, type:@helpOSUpdateTitle},
+	{	
+		label: (
+			i18n`To be able to update your navigation by phone, the OS version of your car’s head unit must be the latest available OS. You can use the {0} Media Nav Evolution Toolbox to update your OS.`,
+			string(brandText.helpOsUpdate.label1.toolBoxName ?? "") 
+		),
+		icon: "updateMenu.svg"
+	},
+	{label: ( i18n`1. Synchronize a USB flash drive with your car's head unit data. Insert the USB flash drive into the head unit and select {0}. This will synchronize the system’s navigation data with the USB flash drive. Once done, remove the USB flash drive.`, string(brandText.helpOsUpdate.label2.naviPath ?? i18n`Map Update`) ), icon: "usb.svg"},
+	{label: ( i18n`2. Connect the USB flash drive to your computer. Install or launch the {0} Media Nav Evolution Toolbox. Please download Toolbox from the following link: {1}`, string(brandText.helpOsUpdate.label3.toolBoxName ?? ""), ( LinkStyle, brandText.helpOsUpdate.label3.linkText ?? "naviextras.com" ) ), linkOnrelease:()=>openUrl(brandText.helpOsUpdate.label3.url ?? "https://naviextras.com"), icon: "usb.svg",},
+	{label: i18n`3. If you are eligible for an OS version update, it will be offered to you automatically. Please note: if no OS update is offered, you already have the latest version available for your model. In this case, skip step 4.`, icon: "profile.svg"}, 
+	{label: i18n`4. Re-insert the USB flash drive into your car's head unit and the update process will start automatically.`, icon: "usb.svg"},
+	{label: ( i18n`Now your car’s head unit is compatible with the {0} application.`, brandText.helpOsUpdate.label6.appName ?? i18n`MAP UPDATE` ), icon: "car_connected.svg"},
+];
+
+<fragment frHelpBase class=main, flexible, vertical, scrollable>
+	own{
+		let template = tHelp;
+		let list;
+	}
+	<lister model=( list ) template=( template ) param={ listSize: (list.length) } templateType(){
+		if ( item?.type == @helpOSUpdateTitle ) return tHelpOSUpdateTitle;
+		if ( item?.type == @title ) return tHelpTitle;
+		return @default;
+	}/>
+	<wheel/>
+    <scroll/>
+</fragment>
+
+export <fragment frHelpMain extends=frUserScreenBase>
+	own{
+		let baseList = categories;
+        let mainTitle = i18n`Help`;
+	}
+</fragment>
+
+export <fragment frHelpShop extends=frHelpBase>
+	own{
+		let list=helpShop;
+	}
+</fragment>
+
+export <fragment frHelpConnect extends=frHelpBase>
+	own{
+		let list=helpConnect;
+	}
+</fragment>
+
+export <fragment frHelpTransfer extends=frHelpBase>
+	own{
+		let list=helpTransfer;
+	}
+</fragment>
+
+export <fragment frHelpOsUpdate extends=frHelpBase>
+	own{
+		let list=helpOsUpdate;
+	}
+</fragment>
+

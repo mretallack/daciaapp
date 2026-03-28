@@ -1,0 +1,363 @@
+{
+  "cells": [
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {proba} from \"system://inspect.xs\"",
+        "{}",
+        "proba();"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "hjson-cell",
+      "source": [
+        "{ sandbox: true }"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Dbus scripting examples"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Sending hello message with **dbus writer** from C++"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "/// env:default!",
+        "import { DbusConnection} from \"dbus/dbus.xs\"",
+        "",
+        "DbusConnection sessionbus; // todo: should we keep this ctor: { additionalName = \"com.nng.navi\" }?",
+        "{}",
+        "",
+        "await sessionbus.connect();",
+        "console.log(\"connection ready, unique name: \", sessionbus.name);",
+        "await sessionbus.messageBus.RequestName(\"com.nng.navi\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Send notifications with org.freedesktop.Notifications"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "class NotificationsWrapper {",
+        "    proxy;",
+        "    s1;",
+        "    s2;",
+        "    async init() {",
+        "        this.proxy = await sessionbus.getProxyObject(\"org.freedesktop.Notifications\", '/org/freedesktop/Notifications');",
+        "        this.s1 = this.proxy.NotificationClosed.subscribe((s, args) => { console.log(\"NotificationClosed signal received: \", args); });",
+        "        this.s2 = this.proxy.ActionInvoked.subscribe((s, args) => { console.log(\"ActionInvoked signal received: \", args); });",
+        "    }",
+        "    Notify(title, details=\"\") {",
+        "        this.proxy.Notify(\"TestApplication\", 0, \"\", title, details, [\"ok\", \"Ok\", \"cancel\", \"Cancel\"], {}, 10000);",
+        "    }",
+        "}",
+        "",
+        "{}",
+        "",
+        "// const s = sessionbus.onSignal().subscribe((signal, args)=> { console.warn(\"Action: \", signal, args) });",
+        "",
+        "// Start daemon on WSL Ubuntu: /usr/lib/notification-daemon/notification-daemon &",
+        "const noti = new NotificationsWrapper();",
+        "await noti.init();",
+        "const nReply = await noti.Notify(\"This is a title\", \"Detailed comment\");",
+        "console.log(`Message ID: ${nReply}`);",
+        "await Chrono.delay(10s); // wait for signal"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Using the Notifications system",
+        "There is a sample implementation of a Notifications system (similar, but much simpler than in Android OS), using node-next library.",
+        "Source can be found here: https://bitbucket.nng.com/projects/UE/repos/dbus-test/browse/src/dbus-infotainment.js",
+        "",
+        "If you start this program and connect it to the same DBUS instance, it will register with the `com.nng.infotainment` well known bus name.",
+        "",
+        "It will expose the `/com/nng/ift/notifications` object with the following interface:",
+        "- `Show(title:string, text:string):uint` Show a new notification with the given title and text. Will return with the unique id of the notification",
+        "- `Cancel(id:uint):bool` Cancel a notification given by it's id. Returns true if the noti could be canceled",
+        "- `List():struct(uint, string, string)[]` List the currently active notifications, grouping properties in a struct: (id, title, text)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "const xml = await sessionbus.Introspect(\"com.nng.infotainment\", '/com/nng/ift/notifications');",
+        "console.log(xml);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { ObjectWrapper, makeInterface } from \"dbus/dbusCommunicator.xs\"",
+        "",
+        "dict d{ noti; s;};",
+        "{}",
+        "",
+        "// Creating a simple object wrapper for a remote object, with a well known interface",
+        "// this is the old implementation using ObjectWrapper",
+        "class Notifications extends ObjectWrapper {",
+        "    constructor(comm) {",
+        "        super(comm, {",
+        "            destination: \"com.nng.infotainment\",",
+        "            interface: 'com.nng.ift.Notifications',",
+        "            path: '/com/nng/ift/notifications'",
+        "        })",
+        "    }",
+        "    ",
+        "    List() { this.call(\"List\", \"\") }",
+        "    Show(title, text) { this.call(\"Show\", \"ss\", title, text) }",
+        "    Cancel(id) { this.call(\"Cancel\", \"u\", id) }",
+        "}",
+        "",
+        "// with createProxyObject",
+        "const noti = sessionbus.createProxyObject(\"com.nng.infotainment\", '/com/nng/ift/notifications', makeInterface({",
+        "    name: 'com.nng.ift.Notifications',",
+        "    methods: {",
+        "        List:   (\"\",                          \"(id:uint, title:string, text:string)[]\"),",
+        "        Show:   (\"title:string, text:string\", \"id:uint\"),   ",
+        "        Cancel: (\"id:uint\",                   \"success:bool\"), ",
+        "    },",
+        "    transforms: { // using transforms we could add prcessing for method prop and signal results",
+        "        List(res) {",
+        "            // map result into readable format",
+        "        }",
+        "    }",
+        "}));",
+        "console.log(await noti.List());",
+        "",
+        "// with getProxyObject",
+        "// d.s = sessionbus.onSignal({member: \"PropertiesChanged\"}).subscribe((s, arg) => {console.warn(s, arg)});",
+        "d.noti = await sessionbus.getProxyObject(\"com.nng.infotainment\", '/com/nng/ift/notifications');",
+        "d.s = d.noti.PropertiesChanged.subscribe((s, arg) => {",
+        "    console.warn(s);",
+        "    const iface, changed, invalidated = ...arg;",
+        "    for (let prop in changed)",
+        "        console.log(`Property \"${prop[0]}\" changed to ${prop[1]}`);",
+        "});",
+        "await d.noti.List();"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Example of showing a new notification "
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "await d.noti.Show(\"Incoming call\", \"Bela is calling...\")"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Example of canceling notifications"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "await d.noti.Cancel(1)"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Property access: getting the first notification (readonly prop)"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "// NOTE: cell execution autimatically awaits if result is a promise",
+        "d.noti.First"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Using a readwrite prop.",
+        "",
+        "`NumVisible`: the number of visible notification"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "d.noti.NumVisible"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "d.noti.NumVisible = 5"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Exporting objects",
+        "",
+        "",
+        "Any object may be exported via `sessionbus.registerObject(<path>, obj)`. For better introspection capabilities the class object should provide a static `interface` field describing the signatures. This can be a sequence when, describing multiple interfaces. "
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { makeInterface, makeInterfaceT } from \"dbus/dbusCommunicator.xs\"",
+        "",
+        "class AddressSearch {",
+        "    ",
+        "    Start(what) {",
+        "        console.log(\"Searching for: \", what);",
+        "        // todo: would register a new object with communicator at this point, tracking the search",
+        "        return \"/com/nng/navi/addressSearch/tasks/newSearch1\"",
+        "    }",
+        "    static interface = makeInterfaceT [{",
+        "    name: \"com.nng.navi.addressSearch\",",
+        "    methods : {",
+        "        Start: (\"what:string\", \"string\"), ",
+        "        Stop: (\"string, string\", \"uint\"),",
+        "    }",
+        "    }];",
+        "}",
+        "",
+        "AddressSearch search;",
+        "",
+        "sessionbus.registerObject(\"/com/nng/navi/addressSearch\", search); // consider: export is a good name as well",
+        "",
+        "console.log(\"Address search interface: \", AddressSearch.interface);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {makeInterface} from \"dbus/dbusCommunicator.xs\"",
+        "",
+        "class FooBar {",
+        "    static interface;   ",
+        "    Foo(what) { return what; }",
+        "    Bar(text, limit) { return [\"foo\", \"bar\"]; }",
+        "    Bar2(text, limit) { return [\"foo2\", \"bar2\"]; }",
+        "}",
+        "",
+        "FooBar.interface = makeInterface({",
+        "    name: \"com.nng.navi.Foo\",",
+        "    methods : {",
+        "        Foo: (\"what:string, how:string\", \"string\"),",
+        "    }",
+        "}, {",
+        "    name: \"com.nng.navi.Bar\",",
+        "    methods : {",
+        "        Bar: (\"text:string, limit:int\", \"string\"), // string[]",
+        "        Bar2: (\"string,int\", \"string\"), // string[]",
+        "    }",
+        "});",
+        "",
+        "class Baz {",
+        "    static interface;",
+        "    Baz(text, limit) { return \"baz\", 1; }",
+        "}",
+        "",
+        "Baz.interface = makeInterface({",
+        "    name: \"com.nng.navi.Baz\",",
+        "    methods : {",
+        "        Baz: (\"string,int\", \"string,int\"),",
+        "    }",
+        "});",
+        "",
+        "class BazBaz {",
+        "    static interface;",
+        "    BazBaz(text) { return \"baz\"; }",
+        "    Alma = \"Starking\";",
+        "    ReadP = 42;",
+        "    WriteP = -42;",
+        "    RWP = 111;",
+        "}",
+        "",
+        "BazBaz.interface = makeInterface({",
+        "    name: \"com.nng.navi.BazBaz\",",
+        "    methods : {",
+        "        BazBaz: (\"string\", \"string\"),",
+        "    },",
+        "    properties: {",
+        "        Alma: \"string\",",
+        "        ReadP: (\"uint\", @read),",
+        "        WriteP: (\"int\", @write),",
+        "        RWP: (\"uint\", @readwrite),",
+        "    }",
+        "});",
+        "",
+        "",
+        "FooBar foobar;",
+        "Baz baz;",
+        "BazBaz bazbaz;",
+        "sessionbus.registerObject(\"/com/nng/navi/foobar\", foobar);",
+        "sessionbus.registerObject(\"/com/nng/navi/foobar/baz\", baz);",
+        "sessionbus.registerObject(\"/com/nng/navi/foobar/bazbaz\", bazbaz);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import { transformSignature } from \"system://dbus\"",
+        "{}",
+        "transformSignature(\"macska: {string  : (int64, int)}, alma:uint16, complex:(int16[][], string)[]\")"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {dict, odict, record} from \"system://core.types\"",
+        "import {objOf, pipe} from \"system://functional\";",
+        "dict Alma {",
+        "    fromEntries(i) { Iter.mapApply(i, (k,v) => (\"_\" + k + \"_\", v + 1000)) |> record.fromEntries(^); }",
+        "}",
+        "const Alma2 = objOf(@fromEntries, i => i.mapApply((k,v)=> {\"_\" + k + \"_\", v + 1000}).toRecord() );",
+        "const Alma3 = objOf(@fromEntries, pipe( Iter.mapApply(?, (k,v) => (\"_\" + k + \"_\", v + 1000)), record.fromEntries(?)) );",
+        "",
+        "Alma2 a { x=5; y=6}",
+        "a;"
+      ]
+    }
+  ]
+}

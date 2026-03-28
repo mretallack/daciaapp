@@ -1,0 +1,77 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## Send notification"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import * as objc from \"system://objc\"",
+        "const uuid = \"alma\";",
+        "const UNMutableNotificationContent = objc.class.UNMutableNotificationContent;",
+        "const UNNotificationRequest = objc.class.UNNotificationRequest;",
+        "const UNUserNotificationCenter = objc.class.UNUserNotificationCenter;",
+        "const NSArray = objc.class.NSArray;",
+        "const center = UNUserNotificationCenter.currentNotificationCenter;",
+        "",
+        "const askPermissionHandler = objc.makeBlock(\"v@?B@\", (granted, error) => {",
+        "    console.log(`Permission granted: ${granted}`);",
+        "    if (error) console.warn(error.localizedDescription.UTF8String);",
+        "});",
+        "",
+        "",
+        "const addNotificationHandler = objc.makeBlock(\"v@?@\", (error) => {",
+        "    if (error) console.warn(error.localizedDescription.UTF8String);",
+        "});",
+        "",
+        "uuid, center"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "let options = 1 + 4; // badge + alert",
+        "center.requestAuthorizationWithOptions(options, askPermissionHandler);"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "let content = UNMutableNotificationContent();",
+        "content.title = \"Weekly Staff Meeting\";",
+        "content.body = \"Every Tuesday at 2pm\";",
+        "",
+        "// show immediately",
+        "const trigger = undef;",
+        "",
+        "// Create the request",
+        "let request = UNNotificationRequest.requestWithIdentifier(uuid, content, trigger);",
+        "// $log(objc.dumpInfo(request));",
+        "",
+        "// Schedule the request with the system.",
+        "center.addNotificationRequest(request, addNotificationHandler);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "{}",
+        "NSArray idsToRemove [uuid];",
+        "center.removePendingNotificationRequestsWithIdentifiers(idsToRemove);",
+        "center.removeDeliveredNotificationsWithIdentifiers(idsToRemove);",
+        ""
+      ]
+    }
+  ]
+}

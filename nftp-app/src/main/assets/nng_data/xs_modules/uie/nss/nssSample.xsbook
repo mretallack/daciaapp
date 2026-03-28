@@ -1,0 +1,392 @@
+{
+  "cells": [
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "# Style helper",
+        "",
+        "## Css paramok",
+        "",
+        "Kell hozza window (`screen.root.styles.param`)",
+        "",
+        "css paramokban vannak szinek etc, kene valami formazo.",
+        "Lehetne csinalni vmi filtert ami book outputban vmilyen formazott eredmenyt ad.",
+        "Legelso formazo color formatter.",
+        "Mitol szin valami:",
+        "* altalaban vmi negativ int, mert alpha komponens miatt 0xffxxxxxx leggyakrabban",
+        "* property/param neve utal a celra, erre utalo substringek",
+        "    * color",
+        "    * bg, background",
+        "    * text",
+        "    * img",
+        "* lehetnek composite propok (appColors.*, phoneColors.*, keyBtnImg.img, )",
+        " Paramok szinek buzi nagy in altalaban (0xffxxxxxx vszinu alpha komponensu color),",
+        "",
+        " Megjelenites lehet tobboszlopos is lehet, vagy tablazat?"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {taggedTupleValue} from \"system://serialization\"",
+        "import { entries, typeof } from \"system://core\"",
+        "import {expandGradientInfo} from \"system://ui.gradient\"",
+        "import { map } from \"system://functional\"",
+        "const xsbookItem = taggedTupleValue(\"vxb\", ?);",
+        "createButton(label, func) { xsbookItem(\"button\", label, func)}",
+        "createColor(color, label) { xsbookItem(\"color\", color, label || (:) )}",
+        "",
+        "style appColors {",
+        "    @declare {       ",
+        "    appColors: {",
+        "        audio: #8d33c1,",
+        "        directions: #3f3cc3,",
+        "        phone: #00adbc,",
+        "        settings: #898989,",
+        "        spotify: #12be42,",
+        "        sensors: #fc955d,",
+        "        demos: #ff1d6f7e,",
+        "        demosActive: #1AEA53,",
+        "        // dummy apps",
+        "        app1: #e54791,",
+        "        app2: #d7be35,",
+        "        app3: #12be42,",
+        "        weather: #d7be35,",
+        "    }; }",
+        "}",
+        "",
+        "getGrad(type, rotate, stop) {",
+        "    const stops =  map(s => {return {color:createColor(s.color), pos:s.pos, length:s.length}}, stop);",
+        "    return {type, rotate, stops};",
+        "}",
+        "",
+        "filterCss(x, isColor=false) {",
+        "    let regex = new re.Regexp(\"(img|color|bg|gradient|background)\", \"i\");",
+        "    let res = {};",
+        "    for(let key,value in entries(x)??[]) {",
+        "        if (isColor || regex.test(key)) {",
+        "            if (typeof(value) == @int) {",
+        "                res[key] = createColor(value);",
+        "            } else {",
+        "                let grad = expandGradientInfo(value, getGrad);",
+        "                if (grad) {",
+        "                    res[key] = grad;",
+        "                    continue;",
+        "                }",
+        "                let embedded = filterCss(value, true);",
+        "                if (len(embedded)) res[key] = embedded;",
+        "            }",
+        "        } else {",
+        "            /*if (typeof(value) == @object) {",
+        "                let embedded = filterCss(value); // not color",
+        "                if (len(embedded)) res[key] = embedded;",
+        "            }*/",
+        "            res[key] = value;",
+        "        }",
+        "    }",
+        "    return res;",
+        "}",
+        "",
+        "{}",
+        "screen.root.styles.add(appColors);",
+        "screen.root.updateStyles();",
+        "filterCss(screen.root.styles.param); // pass through some"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "style YugoParams {",
+        "    @declare {       ",
+        "    inputParams : {",
+        "\t\tpadding : 18,",
+        "\t\tpaddingBottom: 2,",
+        "\t\tsearchingHeight: 2,",
+        "\t\tsearchingHeightForAnim: 4,",
+        "\t\tsearchingWidth: 10,",
+        "        activeBg: #ff5f4f97,",
+        "        activeBgMin: #ff194b6d,",
+        "\t\tcolor: #ff681c1c,",
+        "\t\tbg: ( { borderRadius:24, borderWidth:1, borderImg:( CSS.Param.colors.border ), img:#ff2bb84e } )",
+        "\t}; ",
+        "    kbdParams : {",
+        "\t\tspacePadding: 7,",
+        "\t\tkeyPadding: 4,",
+        "\t\ttextPadding: 10,",
+        "",
+        "\t\tbgColor: #ff1a0c66,",
+        "\t\tfontColor: #ffafff1c,",
+        "\t\tkeyBackground:( { borderRadius: [4], img:#ff2a16e4 } ),",
+        "\t\tkeyButtonW : ( ( sideSize.search - 6 * this.keyPadding ) / 10 ),",
+        "\t\tkeyButtonH: ( int( this.keyButtonW * 0.8 ) ),",
+        "\t}",
+        "    }",
+        "}",
+        "",
+        "screen.root.styles.add(YugoParams);",
+        "screen.root.updateStyles();"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {taggedTupleValue} from \"system://serialization\"",
+        "const xsbookItem = taggedTupleValue(\"vxb\", ?);",
+        "xsbookButton(label, func) { xsbookItem(\"button\", label, func)}",
+        "xsbookColor(color, label) { xsbookItem(\"color\", color, label || (:) )}",
+        "",
+        "clicked(arg) { ",
+        "    console.log(\"Nyomkodhatod amig akarod, \", arg);",
+        "}",
+        "",
+        "console.log(\"szinek\", xsbookColor(#f00, \"nagyon szep szin\"), xsbookColor(#f0f0), xsbookColor(#f00f) );",
+        "",
+        "let libacomb = xsbookButton(\"libacombot!\", clicked(\"nem kapsz semmit\",?) ); ",
+        "console.log(\"Nyomd meg a gombot. kapsz egy\", libacomb );",
+        "await Chrono.delay(200s, $cancellation);",
+        "console.log`cancelled ${$cancellation.canceled}`"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "//console.log(styles.firstChild.firstChild);",
+        "console.log(styles.children[19].ruleList);",
+        "styles.children[19].disableRule(1);",
+        "//styles.children[19].enableRule(1);",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "pelda kamu siddel"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "mutateNssRule(styles, origSid, prevMutSid, mutation) {",
+        "    let r = styles.findRule(origSid);",
+        "    if (!r) return undef;",
+        "    let srcRule = prevMutSid ? styles.findRule(prevMutSid) ?? r : r;",
+        "    let sheet = new Stylesheet;",
+        "    if (let newRule = sheet.insertRule(srcRule)) {",
+        "        mutation(newRule);",
+        "        if (srcRule != r)",
+        "            origRule.stylesheet.remove(srcRule.stylesheet);",
+        "        r.stylesheet.insert(sheet, r);",
+        "        r.disable();",
+        "    }",
+        "    else ",
+        "        return undef;",
+        "}",
+        "{}",
+        "mutateNssRule(screen.root.styles, 218292304L, undef, rule => {",
+        "    rule.removeProp(@alma);",
+        "    rule.setProp(@alma, 45, @important);",
+        "} );",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "//styles.children[19].dump()",
+        "screen.root.styles.dump()"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Inserting copy of a rule and deleting it"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "style x { }",
+        "let nr = x.insertRule(styles.children[19].ruleList[1]);",
+        "x.deleteRule(nr);",
+        "x.dump();",
+        ""
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Removing a property from the copy of the rule"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "style x { }",
+        "let nr = x.insertRule(styles.children[19].ruleList[1]);",
+        "nr.removeProp(@paddingRight);",
+        "x.dump();"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "Change propert value"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "style x { }",
+        "let nr = x.insertRule(styles.children[19].ruleList[1]);",
+        "nr.setProp(@align, \"RIGHT\");",
+        "x.dump();"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "style x { }",
+        "let nr = x.insertRule(styles.children[19].ruleList[1]);",
+        "//x.insertRule(styles.children[19].ruleList[1]);",
+        "nr.setProp(@textColor, #ffb32525);",
+        "x.dump();"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "make a property !important"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "style x { }",
+        "let nr = x.insertRule(styles.children[19].ruleList[1]);",
+        "nr.setProp(@align, \"RIGHT\", @important);",
+        "x.dump();"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import stylesheet from \"system://nss.stylesheet\";",
+        "",
+        "let x = new stylesheet;",
+        "let nr = x.insertRule(styles.children[19].ruleList[1]);",
+        "nr.setProp(@cellW, styles.children[19].ruleList[2].getProp(@cellW));",
+        "x.dump();"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "## color module",
+        "",
+        "### HSL",
+        "```",
+        "hsl(hue,sat,ligth)",
+        "hsla(hue,sat,light,alpha)",
+        "asHsl(color) -> hue,sat,light, alpha",
+        "```",
+        "HSLBy definition, red=0deg=360deg, with the other colors spread around the circle, so green=120deg, blue=240deg, etc. As an <angle>, it implicitly wraps around such that -120deg=240deg=240, 480deg=120deg, -1turn=1turn, etc."
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {taggedTupleValue} from \"system://serialization\"",
+        "import * as c from \"system://ui.color\"",
+        "const xsbookItem = taggedTupleValue(\"vxb\", ?);",
+        "color(color, label) { xsbookItem(\"color\", color, label ?? (:) )}",
+        "logCol(...col) { console.log(...Iter.map(col, color)); }",
+        "{}",
+        "logCol( c.hsl(120deg,75,85),   c.hsl(0deg,75,85),  c.hsl(60, 100,50));",
+        "console.log(color(#ff8c325a), \"asHsl\", c.asHsl(#ff8c325a) );",
+        "console.log(color(#ff333399), \"asHwb\", c.asHwb(#ff333399) );",
+        "logCol(c.hsl(333.33,47.36,37.25), c.hwb(240,20,40));",
+        "console.log(\"color       grayscale   shiftHue\");",
+        "logCol(#8c325a, c.grayscale(#8c325a), c.shiftHue(#8c325a, 120));",
+        "console.log(\"luminosity:\", c.lum(#8c3a5a),  \"(white is: \", c.lum(#fff), \")\");"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "### color tables",
+        "HSL + HWB"
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "import {sprintf} from \"system://format\"",
+        "logHwb(col) { console.log(c.asHwb(col)); }",
+        "genRow(f,h,l) { sprintf(\"l: %. 3d\", l), ...Iter.range(100,-1,-20).map( s => color(  f(h, s, l)   ,\"\")) }",
+        "const genHslRow = genRow(c.hsl(?), ?);",
+        "gen3Table(f,h,step=10) {",
+        " for(let l=100; l>=0; l-=step) { console.log(genRow(f,h, l), \"   \", genRow(f,h+30, l), \"   \", genRow(f,h+60, l), \"   \", genRow(f,h+90, l) ); } ",
+        "}",
+        "genTables(f,step=10) { gen3Table(f,0,step); gen3Table(f,120,step); gen3Table(f,240,step); }",
+        "{}",
+        "console.log(\"       HSL Table\");",
+        "genTables(c.hsl(?), 10);",
+        "console.log(\"       HWB Table\");",
+        "genTables(c.hwb(?), 20);",
+        ""
+      ]
+    },
+    {
+      "kind": "code",
+      "language": "xsmixed",
+      "source": [
+        "style a {",
+        "    @declare {",
+        "        alma:5",
+        "        korte.banan: 5",
+        "        korte.citr: 5;",
+        "        declare sub {",
+        "            kutya:42;",
+        "            macska:21;",
+        "        }",
+        "    }",
+        "}",
+        "",
+        "debug.parseInfo(@detailed, a);",
+        "//console.log(\"a:\", a);",
+        "//console.dir(a);",
+        "//a"
+      ]
+    },
+    {
+      "kind": "markup",
+      "language": "markdown",
+      "source": [
+        "vege",
+        ""
+      ]
+    }
+  ]
+}

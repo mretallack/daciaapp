@@ -1,0 +1,103 @@
+import {range} from "system://itertools"
+
+/**
+* Component for process indication
+* A vertical image which animates from left to right and changin its height during the process
+* @param animTime the duration of the animation in milliseconds
+* @param minHeight the height of the image at the beginning and the end of the animation
+* @param maxHeight the height of the image at the peak of the animation
+* @param minWidth the width of the image at the beginning and the end of the animation
+* @param color color of the animated image
+* @param padding padding of the image on the left and right sides
+* @param show when true, the animation will start
+*/
+export default <component processing orientation=@vertical defaults={ 
+		animTime: 1500ms,
+		minHeight: 3,
+		maxHeight: 6,
+		minWidth: 10,
+		color: #369ce7,
+		padding: 12,
+		fadeTime: 500ms
+}>
+	own{
+		let animPhase = 0;
+		let animSteps = 0;
+		export let show;
+		onChange show( newVal ){
+			if ( newVal ) {
+				if ( !progressBar.isRunning ) {
+					animPhase = 0;
+					animSteps = 0;
+					progressBar.start();
+				}
+			} else {
+				barStopper.start();
+			}
+		};
+
+		timer progressBar {
+			delay=( attributes.animTime / 3 );
+			interval=( attributes.animTime / 3 );
+			on(){
+				if ( animPhase == 0 && animSteps%2 == 0 ) {
+					animPhase = 1;
+					animSteps++;
+				}
+				elsif ( animPhase == 1 || animPhase == 2 )
+					animPhase = 0;
+				else {
+					animPhase = 2;
+					animSteps++;
+				}
+			}
+		}
+
+		// Chrono.schedule caused an assert on back event
+		timer barStopper {
+			delay=( attributes.fadeTime );
+			on() {
+				stopProgressBar();
+			}
+		}
+
+		stopProgressBar() {
+			if ( !show ) {
+				barStopper.stop();
+				progressBar.stop();
+			}
+		}
+	}
+
+	onHide() {
+		barStopper.stop();
+		progressBar.stop();
+	}
+
+	<sprite class=(@processing, ( show ? @fadeIn : @fadeOut ), ( progressBar.isRunning ? ( animPhase ? ( animPhase == 1 ? @secondPhase : @thirdPhase ) : @firstPhase ) : @noPhase)) />
+</component>
+
+/**
+* Component for process indication with animated dots
+* The dots have an opacity animation, delayed depending on their index
+* @param animTime the duration of the animation of a single dot (in time units)
+* @param delay the delay between the animation of subsequent dots (in time units)
+* @param numberOfDots the number of the displayed dots
+* @param dotSize the with and the height of the dots, in pixel
+* @param dotColor the color of the dots
+*/
+export <component processingDots layout=@flex orientation=@horizontal defaults={ 
+		animTime: 500ms,
+		delay: 100ms,
+		numberOfDots: 5,
+		dotSize: 16,
+		dotColor: #fff
+}>
+	own {
+		<template tDot layout=@flex boxAlign=@stretch>
+			<sprite class=processingDot onShow(){ this.opacity=1 } onAnimationFinished(){ this.opacity = !this.opacity }/>
+		</template>
+	}
+
+	<lister model=( [range(attributes.numberOfDots).spread()] ) template=tDot />
+</component>

@@ -1,0 +1,38 @@
+import input from "uie/components/inputComponent.ui"
+import keyboard from "uie/components/keyboard.ui"
+import {@registerStyle} from "uie/styles.xs"
+
+export state stKeyboard {
+	use = frKeyboard;
+}
+
+<fragment frKeyboard class=fill>
+	<input top=0 left=0 w=100% h=100 empty="Empty input" activateOnShow=true />
+	<keyboard class=fill lang=@english paddingBottom=10/>
+</fragment>
+
+// TODO: test should not rely on global style but should be a TestSuiteWithUi and uses `testStyles`
+@registerStyle
+export style kbdStyle{
+.fill {
+	left:0;
+	top:0;
+	bottom:0;
+	right:0;
+}
+
+.flexible.vertical {
+    layout=@flex;
+    orientation=@vertical;
+    valign: @top;
+}
+
+keyboard {
+	bg: #000000;
+	buttonBg: ( { borderRadius: [4], img:#FFFFFF } );
+	fontSize: 16;
+	fontColor: #666666;
+	padding: 4;
+	keybuttonH: 40;
+}
+}
