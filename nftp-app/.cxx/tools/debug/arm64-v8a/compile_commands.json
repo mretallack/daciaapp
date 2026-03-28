@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/mark/git/daciaapp/nftp-probe/nftp-app/.cxx/Debug/6t3c5161/arm64-v8a",
+  "command": "/home/mark/android-sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android26 --sysroot=/home/mark/android-sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dnng_probe_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -std=c11 -fno-limit-debug-info  -fPIC -o CMakeFiles/nng_probe.dir/src/main/cpp/nng_probe.c.o -c /home/mark/git/daciaapp/nftp-probe/nftp-app/src/main/cpp/nng_probe.c",
+  "file": "/home/mark/git/daciaapp/nftp-probe/nftp-app/src/main/cpp/nng_probe.c"
+}
+]

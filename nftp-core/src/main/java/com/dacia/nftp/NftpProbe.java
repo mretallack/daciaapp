@@ -76,20 +76,38 @@ public class NftpProbe {
             log.log("Got device.nng: " + fileData.length + " bytes");
             log.log(new String(fileData, "UTF-8").trim());
 
-            // .xs parser symbols start at ID 100000 (from Ghidra: symbolTable+0xf8 = 100000)
-            // Previous scans of 0-5000 were in the wrong ID space (batch-allocated range)
-            log.log("Scanning symbol IDs 100000-101000 (.xs parser range)...");
+            // Sparse scan to find which ID range has valid symbols
+            // Previous scans found nothing in 0-5000 or 100000-101000
+            // Try: 0-200000 in steps of 1000, then narrow down on hits
+            log.log("Sparse scan: 0-200000 step 1000...");
             int foundCount = 0;
-            for (int symId = 100000; symId <= 101000; symId++) {
+            java.util.List<Integer> hitRanges = new java.util.ArrayList<>();
+            for (int symId = 0; symId <= 200000; symId += 1000) {
                 byte[] qBody = buildQueryInfoBySymbolId(symId);
                 byte[] qResp = conn.sendAndReceive(qBody);
                 boolean isUnknown = qResp.length == 12;
                 if (!isUnknown) {
-                    log.log("*** Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 128));
+                    log.log("*** HIT ID " + symId + " len=" + qResp.length + ": " + hex(qResp, 64));
+                    hitRanges.add(symId);
                     foundCount++;
                 }
+                if (symId % 10000 == 0) log.log("  sparse: " + symId);
             }
-            log.log("Scan complete. Found " + foundCount + " non-unknown responses.");
+            log.log("Sparse scan done. Hits: " + foundCount);
+
+            // If we found hits, do a dense scan around each hit range
+            for (int base : hitRanges) {
+                int from = Math.max(0, base - 1000);
+                int to = base + 1000;
+                log.log("Dense scan " + from + "-" + to + "...");
+                for (int symId = from; symId <= to; symId++) {
+                    byte[] qBody = buildQueryInfoBySymbolId(symId);
+                    byte[] qResp = conn.sendAndReceive(qBody);
+                    if (qResp.length != 12) {
+                        log.log("*** HIT ID " + symId + " len=" + qResp.length + ": " + hex(qResp, 128));
+                    }
+                }
+            }
 
             log.log("Probe complete");
 

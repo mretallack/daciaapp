@@ -435,6 +435,42 @@ The `module_register` function (`FUN_010efa00`) also reveals:
 
 **Next step**: Scan symbol IDs 100000–101000 against the real head unit. The `.xs` symbols should be in this range.
 
+#### Phone-Side Symbol IDs (from parsing YellowBox .xs scripts)
+
+Parsed 108 `.xs` files starting from `yellowbox/src/main.xs` in import order, extracting `@symbol` tokens in order of first encounter. IDs assigned starting from 100000:
+
+**Key NFTP symbols (phone-side YellowBox):**
+
+| Symbol | ID | Source file |
+|--------|----|-------------|
+| `@md5` | 100175 | core/nftp.xs |
+| `@sha1` | 100176 | core/nftp.xs |
+| `@compact` | 100185 | core/nftp.xs |
+| `@error` | 100186 | core/nftp.xs |
+| `@children` | 100187 | core/nftp.xs |
+| `@size` | 100188 | core/nftp.xs |
+| `@ls` | 100189 | core/nftp.xs |
+| `@path` | 100190 | core/nftp.xs |
+| `@freeSpace` | 100199 | connections.xs |
+| `@diskInfo` | 100200 | connections.xs |
+| `@fileMapping` | 100318 | connections.xs |
+| `@device` | 100323 | connections.xs |
+| `@brand` | 100324 | connections.xs |
+
+Total: 371 unique `.xs` symbols, IDs 100000–100370.
+
+**CRITICAL**: These are the PHONE-SIDE (YellowBox) IDs. The head unit runs YellowTool, which has its own `.xs` scripts parsed in a different order. The head unit's IDs for `@device`, `@brand`, etc. will be DIFFERENT because:
+1. YellowTool loads different modules than YellowBox
+2. The import order determines which `@symbol` gets which ID
+3. Only `core/nftp.xs` is shared — but symbols from earlier imports get lower IDs
+
+The scan of 100000–101000 against the head unit returned all "unknown" — confirming the head unit assigns different IDs.
+
+**To find the head unit's IDs, we need to either:**
+1. Extract the YellowTool `.xs` scripts from the head unit firmware
+2. USB-sniff the official app's traffic to see the actual IDs on the wire
+3. Try sending symbol IDs by NAME instead of by integer (if the protocol supports it)
+
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
 1. Discover the IDs by brute-force scanning (in progress, range 700–1500)
 2. Intercept the official app's wire traffic to capture the actual IDs

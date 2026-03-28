@@ -122,6 +122,22 @@ public class MainActivity extends Activity {
             String host = editHost.getText().toString().trim();
             if (!host.isEmpty()) runProbeOverTcp(host, 9876);
         });
+
+        probeView.findViewById(R.id.btnNngProbe).setOnClickListener(v -> {
+            android.widget.TextView txtResult = probeView.findViewById(R.id.txtNngResult);
+            txtResult.setText("Loading NNG SDK...\n");
+            new Thread(() -> {
+                try {
+                    String result = NngProbe.probeSymbols();
+                    runOnUiThread(() -> txtResult.setText(result));
+                    log(result);
+                } catch (Throwable t) {
+                    String err = "NNG probe error: " + t.getMessage();
+                    runOnUiThread(() -> txtResult.setText(err));
+                    log(err);
+                }
+            }).start();
+        });
     }
 
     private void updateProbeStatus(String status) {

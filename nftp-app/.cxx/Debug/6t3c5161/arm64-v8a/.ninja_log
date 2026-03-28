@@ -1,0 +1,11 @@
+# ninja log v5
+0	82	1774701210891740804	CMakeFiles/nng_probe.dir/src/main/cpp/nng_probe.c.o	d4b1193cf9d07df4
+82	117	1774701210926740507	../../../../build/intermediates/cxx/Debug/6t3c5161/obj/arm64-v8a/libnng_probe.so	7e4b109da21b5b96
+0	67	1774701369689395602	CMakeFiles/nng_probe.dir/src/main/cpp/nng_probe.c.o	d4b1193cf9d07df4
+67	97	1774701369719395348	../../../../build/intermediates/cxx/Debug/6t3c5161/obj/arm64-v8a/libnng_probe.so	7e4b109da21b5b96
+1	59	1774701435745836022	CMakeFiles/nng_probe.dir/src/main/cpp/nng_probe.c.o	d4b1193cf9d07df4
+59	89	1774701435775835768	../../../../build/intermediates/cxx/Debug/6t3c5161/obj/arm64-v8a/libnng_probe.so	7e4b109da21b5b96
+1	58	1774701589756531366	CMakeFiles/nng_probe.dir/src/main/cpp/nng_probe.c.o	d4b1193cf9d07df4
+58	88	1774701589786531111	../../../../build/intermediates/cxx/Debug/6t3c5161/obj/arm64-v8a/libnng_probe.so	7e4b109da21b5b96
+0	62	1774701692448661446	CMakeFiles/nng_probe.dir/src/main/cpp/nng_probe.c.o	d4b1193cf9d07df4
+62	93	1774701692479661183	../../../../build/intermediates/cxx/Debug/6t3c5161/obj/arm64-v8a/libnng_probe.so	7e4b109da21b5b96

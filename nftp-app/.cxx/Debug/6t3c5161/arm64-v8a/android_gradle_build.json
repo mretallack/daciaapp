@@ -1,0 +1,38 @@
+{
+  "buildFiles": [
+    "/home/mark/git/daciaapp/nftp-probe/nftp-app/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/home/mark/android-sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/home/mark/git/daciaapp/nftp-probe/nftp-app/.cxx/Debug/6t3c5161/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/home/mark/android-sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/home/mark/git/daciaapp/nftp-probe/nftp-app/.cxx/Debug/6t3c5161/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "nng_probe::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "nng_probe",
+      "output": "/home/mark/git/daciaapp/nftp-probe/nftp-app/build/intermediates/cxx/Debug/6t3c5161/obj/arm64-v8a/libnng_probe.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/home/mark/android-sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/home/mark/android-sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": []
+}
