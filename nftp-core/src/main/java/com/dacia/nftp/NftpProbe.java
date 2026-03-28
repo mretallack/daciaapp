@@ -76,38 +76,29 @@ public class NftpProbe {
             log.log("Got device.nng: " + fileData.length + " bytes");
             log.log(new String(fileData, "UTF-8").trim());
 
-            // Sparse scan to find which ID range has valid symbols
-            // Previous scans found nothing in 0-5000 or 100000-101000
-            // Try: 0-200000 in steps of 1000, then narrow down on hits
-            log.log("Sparse scan: 0-200000 step 1000...");
-            int foundCount = 0;
-            java.util.List<Integer> hitRanges = new java.util.ArrayList<>();
-            for (int symId = 0; symId <= 200000; symId += 1000) {
-                byte[] qBody = buildQueryInfoBySymbolId(symId);
+            // Query with string identifiers (TAG_ID_STRING) — bypasses symbol ID mismatch
+            // The head unit's deserialiser will look up the string in its own symbol table
+            String[] queryKeys = {
+                "device", "brand", "fileMapping", "freeSpace", "diskInfo",
+                "ls", "name", "size", "children", "path",
+                "md5", "sha1", "compact", "error", "response",
+                "request", "control", "get",
+            };
+
+            log.log("=== QueryInfo with string identifiers ===");
+            for (String key : queryKeys) {
+                byte[] qBody = buildQueryInfo(key);
                 byte[] qResp = conn.sendAndReceive(qBody);
                 boolean isUnknown = qResp.length == 12;
-                if (!isUnknown) {
-                    log.log("*** HIT ID " + symId + " len=" + qResp.length + ": " + hex(qResp, 64));
-                    hitRanges.add(symId);
-                    foundCount++;
-                }
-                if (symId % 10000 == 0) log.log("  sparse: " + symId);
+                log.log("@" + key + ": " +
+                    (isUnknown ? "unknown (" + qResp.length + "b)" : qResp.length + "b " + hex(qResp, 64)));
             }
-            log.log("Sparse scan done. Hits: " + foundCount);
 
-            // If we found hits, do a dense scan around each hit range
-            for (int base : hitRanges) {
-                int from = Math.max(0, base - 1000);
-                int to = base + 1000;
-                log.log("Dense scan " + from + "-" + to + "...");
-                for (int symId = from; symId <= to; symId++) {
-                    byte[] qBody = buildQueryInfoBySymbolId(symId);
-                    byte[] qResp = conn.sendAndReceive(qBody);
-                    if (qResp.length != 12) {
-                        log.log("*** HIT ID " + symId + " len=" + qResp.length + ": " + hex(qResp, 128));
-                    }
-                }
-            }
+            // Also try multi-key query like the real app does: queryInfo(@device)
+            log.log("=== Multi-key: device,brand ===");
+            byte[] multiBody = buildQueryInfo("device", "brand");
+            byte[] multiResp = conn.sendAndReceive(multiBody);
+            log.log("Response: " + multiResp.length + "b " + hex(multiResp, 128));
 
             log.log("Probe complete");
 

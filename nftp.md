@@ -539,6 +539,20 @@ non-built-in symbols encountered.
 **Ghidra address correction**: Ghidra uses image base `0x100000`. Real file offsets are
 `ghidra_addr - 0x100000`. E.g. `FUN_00af8b08` → real offset `0x9f8b08`.
 
+#### String Identifiers (TAG_ID_STRING) vs Symbol IDs
+
+The NNG serialisation format supports two ways to encode identifiers:
+- `TAG_ID_SYMBOL_VLI` (29): integer symbol ID — requires matching symbol tables
+- `TAG_ID_STRING` (13): string name — resolved by the receiver's runtime
+
+Since the phone (YellowBox 1.8.13) and head unit (YellowTool 1.18.1) have different NNG SDK
+versions with different built-in symbol tables, integer symbol IDs don't match.
+
+**Test result**: Sending QueryInfo with `TAG_ID_STRING` identifiers to the head unit returns
+4-byte responses (not the 12-byte "unknown" from integer IDs). This confirms the head unit
+processes string identifiers differently — but the response needs further analysis to determine
+if it's returning data or an error code.
+
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
 1. Discover the IDs by brute-force scanning (in progress, range 700–1500)
 2. Intercept the official app's wire traffic to capture the actual IDs
