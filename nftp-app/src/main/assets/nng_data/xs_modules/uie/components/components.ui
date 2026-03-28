@@ -1,2 +1,0 @@
-// meant to be imported in a global import style
-import * as components from "./components.nss.xs"

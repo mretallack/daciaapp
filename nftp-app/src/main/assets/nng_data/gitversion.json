@@ -1,9 +1,0 @@
-{
-"branch": "HEAD",
-"hash": "e14eabb8",
-"nsdk": {
-    "hash": "897d4460137",
-    "branch": "HEAD"
-},
-"buildNum": "1.10.0-yellowbox1.8.13.1+222480.21"
-}
