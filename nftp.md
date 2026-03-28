@@ -471,6 +471,74 @@ The scan of 100000–101000 against the head unit returned all "unknown" — con
 2. USB-sniff the official app's traffic to see the actual IDs on the wire
 3. Try sending symbol IDs by NAME instead of by integer (if the protocol supports it)
 
+#### BREAKTHROUGH: Real Symbol IDs from NNG Runtime (on phone)
+
+Loaded `liblib_nng_sdk.so` on the phone, called `InitializeNative`, then called the internal
+`symbol_intern` function (`FUN_00af8b08` at real offset `0x9f8b08`, Ghidra shows `0xaf8b08` due to
+`0x100000` image base). Results:
+
+**SDK built-in symbols** (pre-registered during `InitializeNative`, IDs 1–~1870):
+
+| Symbol | ID |
+|--------|----|
+| `@call` | 1 |
+| `@WHICH` | 2 |
+| `@length` | 3 |
+| `@serialize` | 4 |
+| `@size` | 6 |
+| `@splice` | 70 |
+| `@get` | 94 |
+| `@list` | 87 |
+| `@name` | 199 |
+| `@constructor` | 220 |
+| `@iterator` | 224 |
+| `@path` | 370 |
+| `@error` | 393 |
+| `@control` | 436 |
+| `@remoteConfig` | 452 |
+| `@asyncIterator` | 453 |
+| `@dispose` | 454 |
+| `@asyncDispose` | 455 |
+| `@children` | 787 |
+| `@getItem` | 1230 |
+| `@compact` | 1341 |
+| `@request` | 1866 |
+| `@response` | 1867 |
+| `@md5` | 1868 |
+| `@sha1` | 1869 |
+
+**NOTE**: The Java `WellKnownSymbol` IDs (0–13) do NOT match the native runtime IDs!
+The Java SDK maps its own ID space to the native IDs via `ifapi_token_from_identifier`.
+
+**`.xs` parser symbols** (first-encounter order, starting at 100000):
+
+| Symbol | ID |
+|--------|----|
+| `@proto` | 100000 |
+| `@ls` | 100001 |
+| `@device` | 100002 |
+| `@brand` | 100003 |
+| `@fileMapping` | 100004 |
+| `@freeSpace` | 100005 |
+| `@diskInfo` | 100006 |
+
+`@proto` was the first symbol interned that wasn't already in the SDK's built-in table.
+`@ls`, `@device`, `@brand`, `@fileMapping`, `@freeSpace`, `@diskInfo` were interned next
+because they weren't encountered during `InitializeNative`.
+
+**Key finding**: The SDK pre-registers ~1870 symbols during init. Common symbols like `@name`,
+`@size`, `@path`, `@error`, `@children`, `@md5`, `@sha1`, `@compact`, `@request`, `@response`
+are ALL SDK built-ins with fixed IDs. Only app-specific symbols like `@device`, `@brand`,
+`@fileMapping`, `@ls` get `.xs` parser IDs (100000+).
+
+**The head unit uses the same `liblib_nng_sdk.so`**, so the SDK built-in IDs (1–~1870) will be
+IDENTICAL. The `.xs` parser IDs (100000+) depend on which scripts run, but since both sides
+share `core/nftp.xs`, the NFTP-specific symbols should get the same IDs IF they're the first
+non-built-in symbols encountered.
+
+**Ghidra address correction**: Ghidra uses image base `0x100000`. Real file offsets are
+`ghidra_addr - 0x100000`. E.g. `FUN_00af8b08` → real offset `0x9f8b08`.
+
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
 1. Discover the IDs by brute-force scanning (in progress, range 700–1500)
 2. Intercept the official app's wire traffic to capture the actual IDs

@@ -1,90 +1,94 @@
 #include <jni.h>
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <dlfcn.h>
 #include <android/log.h>
 
 #define TAG "NngSdkProbe"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 
-static void* sdk_handle = NULL;
-static void* sdk_base = NULL;
-
-// Call JNI_OnLoad manually to let the SDK init its globals
-static int init_sdk(JNIEnv *env) {
-    if (sdk_handle) return 1;
-
-    sdk_handle = dlopen("liblib_nng_sdk.so", RTLD_NOW);
-    if (!sdk_handle) {
-        LOGI("dlopen failed: %s", dlerror());
-        return 0;
-    }
-
-    // Get base address
-    Dl_info info;
-    void* sym = dlsym(sdk_handle, "ifapi_token_alloc_symbol_range");
-    if (sym && dladdr(sym, &info)) {
-        sdk_base = info.dli_fbase;
-    }
-
-    // Call JNI_OnLoad to let the SDK set up its globals
-    typedef jint (*fn_jni_onload)(JavaVM*, void*);
-    fn_jni_onload onload = (fn_jni_onload)dlsym(sdk_handle, "JNI_OnLoad");
-    if (onload) {
-        JavaVM* vm;
-        (*env)->GetJavaVM(env, &vm);
-        LOGI("Calling JNI_OnLoad...");
-        jint ver = onload(vm, NULL);
-        LOGI("JNI_OnLoad returned: %d", ver);
-    }
-
-    return sdk_handle != NULL;
-}
+// Ghidra uses image base 0x100000, real offsets are ghidra_addr - 0x100000
+#define GHIDRA_BASE 0x100000
+#define REAL_OFFSET(ghidra_addr) ((ghidra_addr) - GHIDRA_BASE)
 
 JNIEXPORT jstring JNICALL
-Java_com_dacia_nftpprobe_NngProbe_probeSymbols(JNIEnv *env, jclass clazz) {
+Java_com_dacia_nftpprobe_NngProbe_probeSymbols(JNIEnv *env, jclass clazz, jstring xsRoot) {
     char result[16384];
     int pos = 0;
 
-    if (!init_sdk(env)) {
-        pos += snprintf(result + pos, sizeof(result) - pos, "SDK init failed: %s\n", dlerror());
-        return (*env)->NewStringUTF(env, result);
-    }
-    pos += snprintf(result + pos, sizeof(result) - pos, "SDK loaded, base=%p\n", sdk_base);
+    pos += snprintf(result + pos, sizeof(result) - pos, "SDK loaded\n");
 
-    // Now try ifapi_token_alloc_symbol_range — should work after JNI_OnLoad
-    typedef unsigned long long (*fn_alloc)(unsigned int, const char**);
-    fn_alloc alloc = (fn_alloc)dlsym(sdk_handle, "ifapi_token_alloc_symbol_range");
-    if (!alloc) {
-        pos += snprintf(result + pos, sizeof(result) - pos, "alloc not found\n");
-        return (*env)->NewStringUTF(env, result);
+    // InitializeNative to create symbol table
+    jclass sdkClass = (*env)->FindClass(env, "com/nng/core/SDK");
+    jmethodID setRoot = (*env)->GetStaticMethodID(env, sdkClass, "SetRootPathNative", "(Ljava/lang/String;)V");
+    (*env)->CallStaticVoidMethod(env, sdkClass, setRoot, xsRoot);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    jclass configClass = (*env)->FindClass(env, "com/nng/core/SDK$Configuration");
+    jmethodID configInit = (*env)->GetMethodID(env, configClass, "<init>", "()V");
+    jobject config = (*env)->NewObject(env, configClass, configInit);
+    (*env)->SetObjectField(env, config,
+        (*env)->GetFieldID(env, configClass, "rootPath", "Ljava/lang/String;"), xsRoot);
+
+    jclass helperClass = (*env)->FindClass(env, "com/dacia/nftpprobe/NoOpConsumer");
+    jobject consumer = (*env)->NewObject(env, helperClass,
+        (*env)->GetMethodID(env, helperClass, "<init>", "()V"));
+    (*env)->SetObjectField(env, config,
+        (*env)->GetFieldID(env, configClass, "onEngineStatusChange", "Ljava/util/function/Consumer;"), consumer);
+
+    jmethodID initNative = (*env)->GetStaticMethodID(env, sdkClass, "InitializeNative",
+        "(Lcom/nng/core/SDK$Configuration;)V");
+    (*env)->CallStaticVoidMethod(env, sdkClass, initNative, config);
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        pos += snprintf(result + pos, sizeof(result) - pos, "InitializeNative exception\n");
+    } else {
+        pos += snprintf(result + pos, sizeof(result) - pos, "InitializeNative OK\n");
     }
+
+    // Get base address
+    void* sdk_h = dlopen("liblib_nng_sdk.so", RTLD_NOLOAD);
+    Dl_info info;
+    void* any_sym = dlsym(sdk_h, "ifapi_token_from_identifier");
+    void* base = NULL;
+    if (any_sym && dladdr(any_sym, &info)) base = info.dli_fbase;
+
+    // Verify: ifapi_token_from_identifier should be at base + 0xfec4f8
+    void* expected = (char*)base + 0xfec4f8;
+    pos += snprintf(result + pos, sizeof(result) - pos,
+        "Base: %p\nVerify: dlsym=%p calc=%p match=%s\n",
+        base, any_sym, expected, (any_sym == expected) ? "YES" : "NO");
+
+    // FUN_00af8b08 in Ghidra = offset 0x9f8b08 in real binary
+    typedef unsigned int (*fn_intern)(const char*);
+    fn_intern intern = (fn_intern)((char*)base + REAL_OFFSET(0x00af8b08));
+    pos += snprintf(result + pos, sizeof(result) - pos, "intern at: %p\n", intern);
 
     const char* syms[] = {
         "call", "length", "WHICH", "serialize", "getItem",
         "splice", "list", "remoteConfig", "iterator", "constructor",
         "proto", "asyncIterator", "dispose", "asyncDispose",
-        "md5", "sha1", "stopStream", "pauseStream", "resumeStream",
-        "control", "response", "request", "returns",
-        "getAndRemove", "get", "compact", "error",
-        "children", "name", "size", "ls", "path",
+        "md5", "sha1", "compact", "error", "children",
+        "name", "size", "ls", "path",
         "device", "brand", "fileMapping", "freeSpace", "diskInfo",
-        "swid", "appcid", "igoVersion", "imei", "vin",
-        "agentBrand", "modelName", "brandName", "brandFiles",
+        "get", "response", "request", "control",
     };
     int count = sizeof(syms) / sizeof(syms[0]);
 
-    // Allocate one at a time
-    pos += snprintf(result + pos, sizeof(result) - pos, "\n=== Symbols ===\n");
+    pos += snprintf(result + pos, sizeof(result) - pos, "\n=== intern() ===\n");
     for (int i = 0; i < count; i++) {
-        const char* name = syms[i];
-        unsigned long long ret = alloc(1, &name);
-        unsigned int id = (unsigned int)(ret & 0xFFFFFFFF);
-        unsigned int cnt = (unsigned int)(ret >> 32);
+        unsigned int id = intern(syms[i]);
         pos += snprintf(result + pos, sizeof(result) - pos,
-            "@%-20s = %u (ok=%u)\n", name, id, cnt);
-        LOGI("@%s = %u (ok=%u)", name, id, cnt);
+            "@%-20s = %u\n", syms[i], id);
+        LOGI("@%s = %u", syms[i], id);
+    }
+
+    // Verify idempotent
+    pos += snprintf(result + pos, sizeof(result) - pos, "\n=== verify ===\n");
+    for (int i = 0; i < 5; i++) {
+        unsigned int id = intern(syms[i]);
+        pos += snprintf(result + pos, sizeof(result) - pos,
+            "@%-20s = %u\n", syms[i], id);
     }
 
     return (*env)->NewStringUTF(env, result);

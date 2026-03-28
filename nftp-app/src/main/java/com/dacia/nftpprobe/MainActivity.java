@@ -128,11 +128,13 @@ public class MainActivity extends Activity {
             txtResult.setText("Loading NNG SDK...\n");
             new Thread(() -> {
                 try {
-                    String result = NngProbe.probeSymbols();
+                    // Use app's data dir as xs root
+                    String root = getFilesDir().getAbsolutePath();
+                    String result = NngProbe.probeSymbols(root);
                     runOnUiThread(() -> txtResult.setText(result));
                     log(result);
                 } catch (Throwable t) {
-                    String err = "NNG probe error: " + t.getMessage();
+                    String err = "NNG probe error: " + t.getClass().getSimpleName() + ": " + t.getMessage();
                     runOnUiThread(() -> txtResult.setText(err));
                     log(err);
                 }
