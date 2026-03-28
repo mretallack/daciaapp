@@ -413,6 +413,28 @@ char* id_to_token(SymbolTable* table, uint32_t id) {
 
 **Remaining question**: Which mechanism does the `.xs` runtime use for `@device`, `@brand`, etc.? If these are registered via batch alloc (from a module's symbol table), the IDs would be deterministic. If they're interned lazily during script parsing, the IDs depend on parse order — but since both sides parse the same `core/nftp.xs` and shared modules, the order would still match.
 
+#### CRITICAL FINDING: .xs Parser Counter Starts at 100,000
+
+From decompiling `FUN_00af7860` (symbol_table_init2):
+```c
+*(uint32_t*)(symbolTable + 0xf8) = 100000;  // lazy intern counter starts at 100000
+```
+
+This means:
+- **Well-known symbols**: IDs 0–13 (hardcoded)
+- **Batch-allocated symbols**: IDs from counter at `+0x134` (starts at 0, for native module registration)
+- **`.xs` parser symbols**: IDs starting at **100,000** (counter at `+0xf8`)
+
+**Our scan of 0–5000 was in the completely wrong ID space!** We were scanning batch-allocated IDs, but `.xs` symbols like `@device`, `@brand`, `@fileMapping`, `@ls` are all at IDs >= 100,000.
+
+The `module_register` function (`FUN_010efa00`) also reveals:
+- When registering a module, it calls BOTH `FUN_00af874c` (batch alloc) AND `FUN_00af81dc` (lazy intern) for each name
+- The batch alloc assigns IDs from the `+0x134` counter (0, 1, 2, ...)
+- The lazy intern assigns IDs from the `+0xf8` counter (100000, 100001, ...)
+- The init function iterates a linked list at `DAT_01eb1728` of pre-registered symbol tables
+
+**Next step**: Scan symbol IDs 100000–101000 against the real head unit. The `.xs` symbols should be in this range.
+
 **The core problem**: Symbol IDs are assigned sequentially at runtime. The phone app's NNG runtime and the head unit's NNG runtime both load the same SDK and `.xs` scripts, so they get the same IDs. But our custom Java app is NOT an NNG runtime — we don't know the IDs. We need to either:
 1. Discover the IDs by brute-force scanning (in progress, range 700–1500)
 2. Intercept the official app's wire traffic to capture the actual IDs

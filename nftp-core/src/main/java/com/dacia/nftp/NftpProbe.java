@@ -76,9 +76,20 @@ public class NftpProbe {
             log.log("Got device.nng: " + fileData.length + " bytes");
             log.log(new String(fileData, "UTF-8").trim());
 
-            // CheckSum test on device.nng
-            String md5 = checkSum(conn, log, "license/device.nng", 0);
-            String sha1 = checkSum(conn, log, "license/device.nng", 1);
+            // .xs parser symbols start at ID 100000 (from Ghidra: symbolTable+0xf8 = 100000)
+            // Previous scans of 0-5000 were in the wrong ID space (batch-allocated range)
+            log.log("Scanning symbol IDs 100000-101000 (.xs parser range)...");
+            int foundCount = 0;
+            for (int symId = 100000; symId <= 101000; symId++) {
+                byte[] qBody = buildQueryInfoBySymbolId(symId);
+                byte[] qResp = conn.sendAndReceive(qBody);
+                boolean isUnknown = qResp.length == 12;
+                if (!isUnknown) {
+                    log.log("*** Symbol ID " + symId + " returned " + qResp.length + " bytes: " + hex(qResp, 128));
+                    foundCount++;
+                }
+            }
+            log.log("Scan complete. Found " + foundCount + " non-unknown responses.");
 
             log.log("Probe complete");
 
