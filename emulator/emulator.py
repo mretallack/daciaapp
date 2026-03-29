@@ -903,7 +903,29 @@ def main():
     parser = argparse.ArgumentParser(description="MN4 Head Unit Emulator")
     parser.add_argument("--port", type=int, default=9876)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--daemon", action="store_true", help="Fork into background")
+    parser.add_argument("--pidfile", type=str, help="Write PID to file (implies --daemon)")
     args = parser.parse_args()
+
+    if args.pidfile:
+        args.daemon = True
+
+    if args.daemon:
+        # Re-launch ourselves without --daemon, fully detached
+        import subprocess
+        cmd = [sys.executable, os.path.abspath(__file__),
+               "--port", str(args.port)]
+        if args.verbose:
+            cmd.append("--verbose")
+        devnull = open(os.devnull, "r+b")
+        proc = subprocess.Popen(cmd, stdin=devnull, stdout=devnull,
+                                stderr=devnull, start_new_session=True)
+        devnull.close()
+        if args.pidfile:
+            with open(args.pidfile, "w") as f:
+                f.write(str(proc.pid))
+        print(f"Daemonised, PID: {proc.pid}")
+        sys.exit(0)
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
