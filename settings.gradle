@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = 'nftp-probe'
 include ':nftp-core'
 include ':nftp-app'
+include ':nftp-emu'

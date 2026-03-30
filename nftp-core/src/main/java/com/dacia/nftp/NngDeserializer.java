@@ -37,19 +37,22 @@ public class NngDeserializer {
             case NngSerializer.TAG_INT32: return readInt32();
             case NngSerializer.TAG_UINT64: return readUInt64();
             case NngSerializer.TAG_STRING:
-                return modifier ? readNullTerminatedString() : readString();
+                // The head unit sends null-terminated strings regardless of modifier bit.
+                // Use null-terminated for both 0x03 and 0x83.
+                return modifier ? readNullTerminatedString() : readStringAuto();
             case 4: return modifier ? readNullTerminatedString() : readString(); // I18NString
             case NngSerializer.TAG_DOUBLE: return readDouble();
             case NngSerializer.TAG_TUPLE: return readTupleFixed();
             case NngSerializer.TAG_DICT: return readDictFixed();
             case NngSerializer.TAG_ID_INT: return "@" + readInt32();
             case NngSerializer.TAG_ID_STRING:
-                // With modifier (0x8d): null-terminated — this is the compact format
-                // Without modifier (0x0d): VLU-length-prefixed
-                return "@" + (modifier ? readNullTerminatedString() : readString());
+                // Both 0x0d and 0x8d use null-terminated strings in practice.
+                // The head unit sends 0x0d with null-terminated (not VLU-length-prefixed).
+                return "@" + readNullTerminatedString();
             case 14: return readInt32(); // GenericHandle
             case 15: return "@" + readInt32(); // ObjectHandle (treat as int)
             case NngSerializer.TAG_ID_SYMBOL: return "@symbol:" + readInt32();
+            case 25: { readVlu(); return null; } // Simple Failure — consume error code, treat as null
             case NngSerializer.TAG_INT32_VLI: return (int) readVli();
             case NngSerializer.TAG_INT64_VLI: return readVli();
             case NngSerializer.TAG_ID_INT_VLI: return "@" + readVli();
@@ -58,6 +61,7 @@ public class NngDeserializer {
             case NngSerializer.TAG_ARRAY_VLI_LEN: return readTupleVli(); // arrays as Object[]
             case NngSerializer.TAG_DICT_VLI_LEN: return readDictVli();
             case 21: return readByteStream(); // ByteStream
+            case 33: return readFailureVli(); // FailureVLILen
             default:
                 return "[unknown tag=0x" + Integer.toHexString(rawTag) + " at pos=" + (pos - 1) + "]";
         }
@@ -84,6 +88,31 @@ public class NngDeserializer {
 
     private String readString() {
         int len = (int) readVlu();
+        String s = new String(data, pos, len, StandardCharsets.UTF_8);
+        pos += len;
+        return s;
+    }
+
+    /**
+     * Read a string that may be VLU-length-prefixed or null-terminated.
+     * The head unit sends null-terminated strings even for tag 0x03 (no modifier).
+     * Heuristic: if the first byte is a printable ASCII char (0x20-0x7E) or the
+     * VLU-decoded length exceeds remaining data, treat as null-terminated.
+     */
+    private String readStringAuto() {
+        int savedPos = pos;
+        int firstByte = data[pos] & 0xFF;
+        // If first byte looks like a printable char, it's null-terminated
+        if (firstByte >= 0x20 && firstByte <= 0x7E) {
+            return readNullTerminatedString();
+        }
+        // Try VLU length
+        int len = (int) readVlu();
+        if (len < 0 || pos + len > data.length) {
+            // VLU length is bogus, fall back to null-terminated
+            pos = savedPos;
+            return readNullTerminatedString();
+        }
         String s = new String(data, pos, len, StandardCharsets.UTF_8);
         pos += len;
         return s;
@@ -135,6 +164,11 @@ public class NngDeserializer {
     }
 
     private Object[] readNValues(int count) {
+        if (count < 0 || count > 10000) {
+            throw new IllegalStateException("Unreasonable count=" + count
+                    + " at pos=" + pos + ", data.length=" + data.length
+                    + ", context: " + NftpProbe.hex(data, Math.min(data.length, 64)));
+        }
         Object[] items = new Object[count];
         for (int i = 0; i < count; i++) {
             items[i] = readValue();
@@ -152,7 +186,20 @@ public class NngDeserializer {
         return readNPairs(count);
     }
 
+    /** Read a Failure value — same structure as a dict with VLU count. */
+    private Map<String, Object> readFailureVli() {
+        int count = (int) readVlu();
+        Map<String, Object> failure = readNPairs(count);
+        failure.put("@_failure", true);
+        return failure;
+    }
+
     private Map<String, Object> readNPairs(int count) {
+        if (count < 0 || count > 10000) {
+            throw new IllegalStateException("Unreasonable dict count=" + count
+                    + " at pos=" + pos + ", data.length=" + data.length
+                    + ", context: " + NftpProbe.hex(data, Math.min(data.length, 64)));
+        }
         Map<String, Object> map = new LinkedHashMap<>();
         for (int i = 0; i < count; i++) {
             Object key = readValue();

@@ -12,3 +12,5 @@ venv/
 .DS_Store
 ghidra-project/
 ghidra-scripts/
+nftp-emu/build/
+nftp-emu/target/
