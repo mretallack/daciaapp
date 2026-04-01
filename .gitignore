@@ -13,4 +13,4 @@ venv/
 ghidra-project/
 ghidra-scripts/
 nftp-emu/build/
-nftp-emu/target/
+nftp-emu/target/*.core

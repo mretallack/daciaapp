@@ -1,11 +1,11 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.dacia.nftpprobe'
+    namespace 'uk.org.retallack.nftpprobe'
     compileSdk 36
 
     defaultConfig {
-        applicationId 'com.dacia.nftpprobe'
+        applicationId 'uk.org.retallack.nftpprobe'
         minSdk 26
         targetSdk 36
         versionCode 1
