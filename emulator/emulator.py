@@ -17,8 +17,8 @@ CONTROL_ID = 0xC000
 MAX_TXN_ID = 0x3FFF
 
 FAKE_DEVICE_NNG = (
-    b"SWID=CK-TEST-FAKE-0000\n"
-    b"VIN=UU1TESTVIN0000000\n"
+    b"SWID=CK-DACIA-EMU-0001\n"
+    b"VIN=VF1TESTEMU000001\n"
     b"IGO=9.12.179.000000\n"
 )
 
@@ -425,6 +425,24 @@ def serialize_identifier(name):
     return bytes([TAG_ID_STRING_COMPACT]) + data + b"\x00"
 
 
+TAG_FAILURE_SIMPLE = 25   # 0x19 — simple failure with VLU error code
+TAG_FAILURE_VLI_LEN = 33  # 0x21 — failure with key-value pairs
+
+
+def serialize_failure_simple(error_code=3):
+    """Tag 25: simple failure marker with VLU error code."""
+    return bytes([TAG_FAILURE_SIMPLE]) + encode_vlu(error_code)
+
+
+def serialize_failure_vli(pairs):
+    """Tag 33: failure with key-value pairs (e.g. @message -> "error text")."""
+    body = b""
+    for key, value in pairs:
+        body += serialize_identifier(key)
+        body += value
+    return bytes([TAG_FAILURE_VLI_LEN]) + encode_vlu(len(pairs)) + body
+
+
 def serialize_dict(items):
     """Serialize a dict/record as TAG_DICT_VLI_LEN."""
     body = b""
@@ -519,6 +537,18 @@ def deserialize_value(data, offset):
     elif tag == TAG_DOUBLE:
         v = struct.unpack_from("<d", data, offset)[0]
         return v, offset + 8
+    elif tag == TAG_FAILURE_SIMPLE:
+        _, offset = decode_vlu(data, offset)  # consume error code
+        return None, offset
+    elif tag == TAG_FAILURE_VLI_LEN:
+        count, offset = decode_vlu(data, offset)
+        d = {}
+        for _ in range(count):
+            key, offset = deserialize_value(data, offset)
+            val, offset = deserialize_value(data, offset)
+            k = key[1:] if isinstance(key, str) and key.startswith("@") else str(key)
+            d[k] = val
+        return d, offset
     else:
         # Unknown — return marker and don't advance (best effort)
         return f"[tag=0x{raw_tag:02x}]", offset
@@ -658,34 +688,47 @@ def build_query_info_response(fs, query_body, verbose=False):
     results = []
     for key in keys:
         if key in ("diskInfo", "symbol:100001"):
-            total = 8 * 1024 * 1024 * 1024
-            used = fs.total_size()
             results.append(serialize_dict([
-                ("available", serialize_int64_vli(total - used)),
-                ("size", serialize_int64_vli(total)),
+                ("available", serialize_int64_vli(1_181_116_006)),
+                ("size", serialize_int64_vli(2_147_483_648)),
             ]))
             if verbose:
                 print(f"    {key} -> diskInfo")
         elif key in ("freeSpace", "symbol:100000"):
-            total = 8 * 1024 * 1024 * 1024
-            used = fs.total_size()
-            results.append(serialize_int64_vli(total - used))
+            results.append(serialize_int64_vli(1_181_116_006))
             if verbose:
                 print(f"    {key} -> freeSpace")
         elif key in ("device", "symbol:100002"):
             results.append(serialize_dict([
-                ("swid", serialize_string("EMU-TEST-0001")),
-                ("vin", serialize_string("VF1TESTEMU000001")),
-                ("igoVersion", serialize_string("9.99.999.000000")),
-                ("appcid", serialize_string("EMULATOR")),
+                ("modelName", serialize_string("DaciaAutomotiveDeviceCY20_ULC4dot5")),
+                ("brandName", serialize_string("DaciaAutomotive")),
+                ("appcid", serialize_failure_vli([
+                    ("message", serialize_string("Object has no such property @brand")),
+                ])),
+                ("igoVersion", serialize_failure_simple(3)),
+                ("swid", serialize_failure_simple(3)),
+                ("sku", serialize_failure_simple(3)),
+                ("vin", serialize_failure_simple(3)),
+                ("imei", serialize_failure_simple(3)),
+                ("firstUse", serialize_int_vli(0)),
             ]))
             if verbose:
-                print(f"    {key} -> device")
+                print(f"    {key} -> device (with failures)")
         elif key in ("brand", "symbol:100003"):
+            brand_files = serialize_tuple([
+                serialize_dict([
+                    ("path", serialize_string("/NaviSync/license/device.nng")),
+                ]),
+                serialize_dict([
+                    ("path", serialize_string("/NaviSync/CONTENT/brand.txt")),
+                    ("content", serialize_string("dacia")),
+                ]),
+            ])
             results.append(serialize_dict([
-                ("agentBrand", serialize_string("Dacia")),
-                ("modelName", serialize_string("Emulator")),
-                ("brandName", serialize_string("TestBrand")),
+                ("agentBrand", serialize_string("Dacia_ULC")),
+                ("modelName", serialize_string("DaciaAutomotiveDeviceCY20_ULC4dot5")),
+                ("brandName", serialize_string("DaciaAutomotive")),
+                ("brandFiles", brand_files),
             ]))
             if verbose:
                 print(f"    {key} -> brand")
@@ -717,11 +760,26 @@ def build_query_info_response(fs, query_body, verbose=False):
 # Connection handler
 # ---------------------------------------------------------------------------
 
-def handle_connection(conn, addr, verbose):
+def handle_connection(conn, addr, verbose, capture_file=None):
     if verbose:
         print(f"Connection from {addr}")
     fs = EmulatorFS()
     transfer_active = False
+    capture_lock = threading.Lock() if capture_file else None
+
+    def capture(direction, cmd, pkt_id, data):
+        if capture_file:
+            ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+            hex_str = data[:128].hex(" ") if data else ""
+            line = f"{ts} {direction} cmd={cmd} id={pkt_id} len={len(data)} {hex_str}\n"
+            with capture_lock:
+                capture_file.write(line)
+                capture_file.flush()
+
+    def respond(pkt_id, resp_body):
+        capture("RSP", cmd, pkt_id, resp_body)
+        send_response(conn, pkt_id, resp_body)
+
     try:
         while True:
             try:
@@ -733,6 +791,7 @@ def handle_connection(conn, addr, verbose):
             cmd = body[0]
             if verbose:
                 print(f"  cmd={cmd} id={pkt_id} len={len(body)}")
+            capture("REQ", cmd, pkt_id, body)
 
             # Control messages — no response
             if pkt_id == CONTROL_ID:
@@ -746,7 +805,7 @@ def handle_connection(conn, addr, verbose):
             if cmd == 0:  # Init
                 name, _ = parse_null_string(body, 2)  # skip cmd + vlu
                 resp = b"\x00" + encode_vlu(1) + b"FakeHeadUnit/1.0\x00"
-                send_response(conn, pkt_id, resp)
+                respond(pkt_id, resp)
                 if verbose:
                     print(f"  Init from '{name}' -> OK")
 
@@ -759,11 +818,11 @@ def handle_connection(conn, addr, verbose):
                     file_len, off = decode_vlu(body, off)
                 file_data = fs.get_file(fname, position, file_len)
                 if file_data is not None:
-                    send_response(conn, pkt_id, b"\x00" + file_data)
+                    respond(pkt_id, b"\x00" + file_data)
                     if verbose:
                         print(f"  GetFile '{fname}' pos={position} len={file_len} -> {len(file_data)} bytes")
                 else:
-                    send_response(conn, pkt_id, b"\x01EACCESS")
+                    respond(pkt_id, b"\x01EACCESS")
                     if verbose:
                         print(f"  GetFile '{fname}' -> EACCESS")
 
@@ -771,7 +830,7 @@ def handle_connection(conn, addr, verbose):
                 if verbose:
                     print(f"  QueryInfo body: {body[1:].hex()}")
                 resp = build_query_info_response(fs, body[1:], verbose)
-                send_response(conn, pkt_id, resp)
+                respond(pkt_id, resp)
 
             elif cmd == 5:  # CheckSum
                 method = body[1]
@@ -779,14 +838,20 @@ def handle_connection(conn, addr, verbose):
                 file_data = fs.get_file(fname)
                 if file_data is not None:
                     h = hashlib.md5(file_data).digest() if method == 0 else hashlib.sha1(file_data).digest()
-                    send_response(conn, pkt_id, b"\x00" + h)
+                    respond(pkt_id, b"\x00" + h)
                     if verbose:
                         mname = "MD5" if method == 0 else "SHA1"
                         print(f"  CheckSum {mname} '{fname}' -> {h.hex()}")
                 else:
-                    send_response(conn, pkt_id, b"\x01")
+                    respond(pkt_id, b"\x01")
                     if verbose:
                         print(f"  CheckSum '{fname}' -> not found")
+
+            elif cmd == 2:  # Commit
+                fname, off = parse_null_string(body, 1)
+                respond(pkt_id, b"\x00")
+                if verbose:
+                    print(f"  Commit '{fname}' -> OK")
 
             elif cmd == 1:  # PushFile
                 fname, off = parse_null_string(body, 1)
@@ -804,7 +869,7 @@ def handle_connection(conn, addr, verbose):
                 only_if_exists = bool(options & 0x10)
                 target = fname + ".part" if use_part else fname
                 if only_if_exists and not fs.is_file(fname):
-                    send_response(conn, pkt_id, b"\x01")
+                    respond(pkt_id, b"\x01")
                     if verbose:
                         print(f"  PushFile '{fname}' -> Failed (OnlyIfExists)")
                 else:
@@ -813,7 +878,7 @@ def handle_connection(conn, addr, verbose):
                         fs.rename(target, fname)
                     if options & 0x08:  # TrimToWritten
                         pass  # already exact size from put_file
-                    send_response(conn, pkt_id, b"\x00")
+                    respond(pkt_id, b"\x00")
                     if verbose:
                         print(f"  PushFile '{fname}' opts=0x{options:02x} -> OK ({len(content)} bytes)")
 
@@ -821,11 +886,11 @@ def handle_connection(conn, addr, verbose):
                 fname, off = parse_null_string(body, 1)
                 recursive = body[off] if off < len(body) else 0
                 if fs.delete(fname, recursive=bool(recursive)):
-                    send_response(conn, pkt_id, b"\x00")
+                    respond(pkt_id, b"\x00")
                     if verbose:
                         print(f"  DeleteFile '{fname}' recursive={recursive} -> OK")
                 else:
-                    send_response(conn, pkt_id, b"\x01")
+                    respond(pkt_id, b"\x01")
                     if verbose:
                         print(f"  DeleteFile '{fname}' -> Failed")
 
@@ -833,11 +898,11 @@ def handle_connection(conn, addr, verbose):
                 src, off = parse_null_string(body, 1)
                 dst, off = parse_null_string(body, off)
                 if fs.rename(src, dst):
-                    send_response(conn, pkt_id, b"\x00")
+                    respond(pkt_id, b"\x00")
                     if verbose:
                         print(f"  RenameFile '{src}' -> '{dst}' OK")
                 else:
-                    send_response(conn, pkt_id, b"\x01")
+                    respond(pkt_id, b"\x01")
                     if verbose:
                         print(f"  RenameFile '{src}' -> Failed")
 
@@ -846,45 +911,45 @@ def handle_connection(conn, addr, verbose):
                 new_path, off = parse_null_string(body, off)
                 # hardlink flag at off, ignored — we just copy
                 if fs.link(orig, new_path):
-                    send_response(conn, pkt_id, b"\x00")
+                    respond(pkt_id, b"\x00")
                     if verbose:
                         print(f"  LinkFile '{orig}' -> '{new_path}' OK")
                 else:
-                    send_response(conn, pkt_id, b"\x01")
+                    respond(pkt_id, b"\x01")
                     if verbose:
                         print(f"  LinkFile '{orig}' -> Failed")
 
             elif cmd == 10:  # PrepareForTransfer
                 transfer_active = True
-                send_response(conn, pkt_id, b"\x00")
+                respond(pkt_id, b"\x00")
                 if verbose:
                     print(f"  PrepareForTransfer -> OK (transfer_active=True)")
 
             elif cmd == 11:  # TransferFinished
                 transfer_active = False
-                send_response(conn, pkt_id, b"\x00")
+                respond(pkt_id, b"\x00")
                 if verbose:
                     print(f"  TransferFinished -> OK (transfer_active=False)")
 
             elif cmd == 12:  # Mkdir
                 dname, off = parse_null_string(body, 1)
                 if fs.mkdir(dname):
-                    send_response(conn, pkt_id, b"\x00")
+                    respond(pkt_id, b"\x00")
                     if verbose:
                         print(f"  Mkdir '{dname}' -> OK")
                 else:
-                    send_response(conn, pkt_id, b"\x01")
+                    respond(pkt_id, b"\x01")
                     if verbose:
                         print(f"  Mkdir '{dname}' -> Failed")
 
             elif cmd == 13:  # Chmod
                 cname, off = parse_null_string(body, 1)
-                send_response(conn, pkt_id, b"\x00")
+                respond(pkt_id, b"\x00")
                 if verbose:
                     print(f"  Chmod '{cname}' -> OK")
 
             else:
-                send_response(conn, pkt_id, b"\x7f")
+                respond(pkt_id, b"\x7f")
                 if verbose:
                     print(f"  Unknown cmd {cmd} -> 0x7F")
 
@@ -903,6 +968,7 @@ def main():
     parser = argparse.ArgumentParser(description="MN4 Head Unit Emulator")
     parser.add_argument("--port", type=int, default=9876)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--capture", type=str, help="Log packets to file")
     parser.add_argument("--daemon", action="store_true", help="Fork into background")
     parser.add_argument("--pidfile", type=str, help="Write PID to file (implies --daemon)")
     args = parser.parse_args()
@@ -917,6 +983,8 @@ def main():
                "--port", str(args.port)]
         if args.verbose:
             cmd.append("--verbose")
+        if args.capture:
+            cmd.extend(["--capture", args.capture])
         devnull = open(os.devnull, "r+b")
         proc = subprocess.Popen(cmd, stdin=devnull, stdout=devnull,
                                 stderr=devnull, start_new_session=True)
@@ -927,6 +995,10 @@ def main():
         print(f"Daemonised, PID: {proc.pid}")
         sys.exit(0)
 
+    capture_file = open(args.capture, "a") if args.capture else None
+    if capture_file:
+        print(f"Capturing packets to {args.capture}")
+
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("0.0.0.0", args.port))
@@ -935,12 +1007,15 @@ def main():
     try:
         while True:
             conn, addr = srv.accept()
-            t = threading.Thread(target=handle_connection, args=(conn, addr, args.verbose), daemon=True)
+            t = threading.Thread(target=handle_connection,
+                                 args=(conn, addr, args.verbose, capture_file), daemon=True)
             t.start()
     except KeyboardInterrupt:
         print("\nShutting down")
     finally:
         srv.close()
+        if capture_file:
+            capture_file.close()
 
 
 if __name__ == "__main__":

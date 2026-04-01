@@ -1,0 +1,77 @@
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/rendering/mod_surface/src/gles/gles-2.0/glfuncs_2_linux.cpp:125 cond:false
+	msg: EGL dll not detected. Tried: libEGL.so.1 libEGL.so
+OpenGL dll not detected. Tried: libGLESv2.so.2libGLESv2.solibEGL.so.1libEGL.so
+ Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/rendering/mod_surface/src/gles/gles-2.0/glfuncs_2_linux.cpp:125 cond:false
+	msg: EGL dll not detected. Tried: libEGL.so.1 libEGL.so
+OpenGL dll not detected. Tried: libGLESv2.so.2libGLESv2.solibEGL.so.1libEGL.so
+ Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:51 cond:false
+	msg: Application crashed Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:51 cond:false
+	msg: Application crashed Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:51 cond:false
+	msg: Application crashed Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:51 cond:false
+	msg: Application crashed Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:45 cond:false
+	msg: Application crashed with exception:
+std::exception Backtrace:----- No script backtrace was available at this point -----
+
+
+Assertion failed at /TeamCity/buildAgent/work/361af6b047485c2b/engine/modules/core/mod_core/src/ffcore/implementation/thread/thread_server.cpp:51 cond:false
+	msg: Application crashed Backtrace:----- No script backtrace was available at this point -----
+
+

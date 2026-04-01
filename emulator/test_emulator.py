@@ -80,7 +80,7 @@ def test_getfile_device_nng(server):
     send_request(sock, 2, build_getfile("license/device.nng"))
     _, resp = recv_response(sock)
     assert resp[0] == 0
-    assert b"SWID=CK-TEST-FAKE-0000" in resp
+    assert b"SWID=CK-DACIA-EMU-0001" in resp
     sock.close()
 
 
@@ -216,8 +216,16 @@ def test_queryinfo_device(server):
     assert resp[0] == 0  # success
     val, _ = deserialize_value(resp, 1)
     assert isinstance(val, dict)
-    assert val["swid"] == "EMU-TEST-0001"
-    assert val["vin"] == "VF1TESTEMU000001"
+    # Real head unit returns modelName/brandName but failures for swid/vin/igoVersion
+    assert val["modelName"] == "DaciaAutomotiveDeviceCY20_ULC4dot5"
+    assert val["brandName"] == "DaciaAutomotive"
+    # swid/vin/igoVersion are simple failures (tag 25) → deserialized as None
+    assert val["swid"] is None
+    assert val["vin"] is None
+    assert val["igoVersion"] is None
+    # appcid is a FailureVLILen (tag 33) → deserialized as dict with message
+    assert isinstance(val["appcid"], dict)
+    assert val["appcid"]["message"] == "Object has no such property @brand"
     sock.close()
 
 
@@ -246,8 +254,8 @@ def test_queryinfo_multi_keys(server):
     assert isinstance(val, tuple)
     assert len(val) == 2
     # First is device dict, second is brand dict
-    assert val[0]["swid"] == "EMU-TEST-0001"
-    assert val[1]["agentBrand"] == "Dacia"
+    assert val[0]["modelName"] == "DaciaAutomotiveDeviceCY20_ULC4dot5"
+    assert val[1]["agentBrand"] == "Dacia_ULC"
     sock.close()
 
 
@@ -694,3 +702,118 @@ def test_full_update_flow(server):
     assert resp[0] == 0
     assert resp[1:] == map_data
     sock.close()
+
+
+# ---------------------------------------------------------------------------
+# Failure serialization tests
+# ---------------------------------------------------------------------------
+
+def test_serialize_failure_simple():
+    """Tag 25 (0x19): simple failure with VLU error code."""
+    from emulator import serialize_failure_simple, TAG_FAILURE_SIMPLE, encode_vlu
+    data = serialize_failure_simple(3)
+    assert data[0] == TAG_FAILURE_SIMPLE
+    # Remaining bytes are VLU(3)
+    assert data[1:] == encode_vlu(3)
+    # Deserialize: tag 25 → None
+    val, _ = deserialize_value(data, 0)
+    assert val is None
+
+
+def test_serialize_failure_vli():
+    """Tag 33 (0x21): failure with key-value pairs."""
+    from emulator import serialize_failure_vli, serialize_string, TAG_FAILURE_VLI_LEN
+    data = serialize_failure_vli([
+        ("message", serialize_string("Object has no such property @brand")),
+    ])
+    assert data[0] == TAG_FAILURE_VLI_LEN
+    # Deserialize: tag 33 → dict with message
+    val, _ = deserialize_value(data, 0)
+    assert isinstance(val, dict)
+    assert val["message"] == "Object has no such property @brand"
+
+
+def test_commit(server):
+    """Commit (cmd 2) returns success."""
+    sock = connect(server)
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    body = b"\x02" + b"content/map/update.fbl\x00"
+    send_request(sock, 2, body)
+    _, resp = recv_response(sock)
+    assert resp[0] == 0
+    sock.close()
+
+
+def test_queryinfo_device_failures(server):
+    """QueryInfo @device returns failures for swid/vin/igoVersion matching real head unit."""
+    sock = connect(server)
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    send_request(sock, 2, build_queryinfo_keys("device"))
+    _, resp = recv_response(sock)
+    assert resp[0] == 0
+    val, _ = deserialize_value(resp, 1)
+    # Fields that work
+    assert val["modelName"] == "DaciaAutomotiveDeviceCY20_ULC4dot5"
+    assert val["firstUse"] == 0
+    # Simple failures (tag 25) → None
+    for field in ("swid", "vin", "igoVersion", "sku", "imei"):
+        assert val[field] is None, f"Expected None for {field}, got {val[field]}"
+    # FailureVLILen (tag 33) → dict
+    assert isinstance(val["appcid"], dict)
+    sock.close()
+
+
+def test_queryinfo_brand_brandfiles(server):
+    """QueryInfo @brand includes brandFiles array matching real head unit."""
+    sock = connect(server)
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    send_request(sock, 2, build_queryinfo_keys("brand"))
+    _, resp = recv_response(sock)
+    assert resp[0] == 0
+    val, _ = deserialize_value(resp, 1)
+    assert val["agentBrand"] == "Dacia_ULC"
+    assert val["brandName"] == "DaciaAutomotive"
+    # brandFiles is a tuple of dicts
+    assert isinstance(val["brandFiles"], tuple)
+    assert len(val["brandFiles"]) == 2
+    sock.close()
+
+
+def test_capture_file(tmp_path):
+    """Verify --capture writes packet logs."""
+    import tempfile
+    capture_path = tmp_path / "capture.log"
+    capture_f = open(capture_path, "a")
+
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+
+    def accept_one():
+        try:
+            conn, addr = srv.accept()
+            handle_connection(conn, addr, verbose=False, capture_file=capture_f)
+        except OSError:
+            pass
+
+    t = threading.Thread(target=accept_one, daemon=True)
+    t.start()
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect(("127.0.0.1", port))
+    send_request(sock, 1, build_init())
+    recv_response(sock)
+    sock.close()
+    t.join(timeout=2)
+    srv.close()
+    capture_f.close()
+
+    lines = capture_path.read_text().strip().split("\n")
+    assert len(lines) >= 2  # at least REQ + RSP
+    assert "REQ cmd=0" in lines[0]
+    assert "RSP cmd=0" in lines[1]
