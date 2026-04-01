@@ -10,3 +10,7 @@ __pycache__/
 venv/
 *.apk
 .DS_Store
+ghidra-project/
+ghidra-scripts/
+nftp-emu/build/
+nftp-emu/target/*.core

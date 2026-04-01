@@ -1,0 +1,26 @@
+apply plugin: 'java-library'
+apply plugin: 'application'
+
+application {
+    mainClass = 'uk.org.retallack.nftpemu.NngSdkEmulator'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+dependencies {
+    implementation project(':nftp-core')
+    implementation 'com.github.zhkl0228:unidbg-android:0.9.9'
+    implementation 'com.github.zhkl0228:unidbg-unicorn2:0.9.9'
+    implementation 'org.slf4j:slf4j-simple:2.0.9'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// Run the protocol test against the Python emulator
+tasks.register('protocolTest', JavaExec) {
+    mainClass = 'uk.org.retallack.nftpemu.NftpProtocolTest'
+    classpath = sourceSets.main.runtimeClasspath
+    description = 'Run NFTP protocol tests against the Python emulator on :9876'
+}
